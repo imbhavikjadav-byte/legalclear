@@ -32,7 +32,10 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      /* justify-content: center intentionally removed — it causes content to
+         overflow above the scroll origin on short mobile viewports, making
+         the top of the page unreachable. margin: auto on .container is the
+         correct way to centre a flex child without that side-effect. */
       min-height: 100vh;
       padding: 48px 24px;
       text-align: center;
@@ -56,6 +59,10 @@
       z-index: 1;
       max-width: 560px;
       width: 100%;
+      /* Centres vertically when there is space; when content overflows the
+         viewport the margin collapses to 0 and content remains scrollable
+         from the very top — unlike justify-content: center. */
+      margin: auto;
     }
 
     /* ── Logo + badge block ── */
