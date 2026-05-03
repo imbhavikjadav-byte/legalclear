@@ -21,7 +21,6 @@
     }
 
     html, body {
-      height: 100%;
       background: var(--navy);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       color: var(--text);
@@ -29,19 +28,10 @@
     }
 
     body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      /* justify-content: center intentionally removed — it causes content to
-         overflow above the scroll origin on short mobile viewports, making
-         the top of the page unreachable. margin: auto on .container is the
-         correct way to centre a flex child without that side-effect. */
-      min-height: 100vh;
-      padding: 48px 24px;
       text-align: center;
     }
 
-    /* ── Subtle grid background ── */
+    /* ── Subtle grid background (position:fixed so it always covers the viewport) ── */
     body::before {
       content: "";
       position: fixed;
@@ -54,15 +44,53 @@
       z-index: 0;
     }
 
-    .container {
+    /*
+     * .page-center — the centering wrapper.
+     *
+     * WHY NOT justify-content:center or margin:auto on a 100vh/100dvh body?
+     * Both cause content to overflow ABOVE the scroll origin on mobile when
+     * the address bar is visible (iOS Safari / Android Chrome), making the
+     * logo permanently unreachable.
+     *
+     * THE FIX — two-spacer flex pattern:
+     *   ::before and ::after are flex children with flex:1 and min-height:0.
+     *   • When viewport > content: spacers grow equally → content is centred.
+     *   • When viewport < content: spacers collapse to 0, content starts at
+     *     padding-top (48px) — always at or below y=0 → always reachable.
+     *
+     * 100dvh (dynamic viewport height) additionally corrects for iOS Safari
+     * where 100vh equals the full screen height even when the address bar
+     * is visible, causing content to be pushed above the visible area.
+     */
+    .page-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;   /* fallback for older browsers */
+      min-height: 100dvh;  /* dynamically tracks visible area on mobile */
+      padding: 48px 24px;
+      box-sizing: border-box;
       position: relative;
       z-index: 1;
+    }
+
+    /* Top spacer: grows to push content down when there is free space */
+    .page-center::before {
+      content: '';
+      flex: 1;
+      min-height: 0; /* must be able to collapse to 0 when content overflows */
+    }
+
+    /* Bottom spacer: grows to fill space below content */
+    .page-center::after {
+      content: '';
+      flex: 1;
+      min-height: 0;
+    }
+
+    .container {
       max-width: 560px;
       width: 100%;
-      /* Centres vertically when there is space; when content overflows the
-         viewport the margin collapses to 0 and content remains scrollable
-         from the very top — unlike justify-content: center. */
-      margin: auto;
     }
 
     /* ── Logo + badge block ── */
@@ -238,7 +266,7 @@
   </style>
 </head>
 <body>
-
+  <div class="page-center">
   <div class="container">
 
     <!-- Logo block: logo row + badge stacked, all centred -->
@@ -323,6 +351,7 @@
     </p>
 
   </div>
+  </div><!-- /.page-center -->
 
 </body>
 </html>
