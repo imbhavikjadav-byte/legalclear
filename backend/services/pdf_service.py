@@ -63,6 +63,16 @@ def _build_styles():
         fontSize=22,
         textColor=WHITE,
         alignment=TA_CENTER,
+        leading=28,
+        spaceAfter=8,
+    )
+    cover_doc_name_small = ParagraphStyle(
+        "CoverDocNameSmall",
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        textColor=WHITE,
+        alignment=TA_CENTER,
+        leading=22,
         spaceAfter=8,
     )
     cover_meta = ParagraphStyle(
@@ -142,6 +152,7 @@ def _build_styles():
         "cover_title": cover_title,
         "cover_sub": cover_sub,
         "cover_doc_name": cover_doc_name,
+        "cover_doc_name_small": cover_doc_name_small,
         "cover_meta": cover_meta,
         "cover_disclaimer": cover_disclaimer,
         "section_heading": section_heading,
@@ -230,7 +241,10 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
         [Paragraph("LegalClear", styles["cover_title"])],              # row 0
         [Paragraph("Legal Document Plain-English Translation Report",   # row 1
                    styles["cover_sub"])],
-        [Paragraph(document_name, styles["cover_doc_name"])],           # row 2
+        # Adaptive font size: use smaller style for long names to prevent overflow
+        [Paragraph(document_name,
+                   styles["cover_doc_name"] if len(document_name) <= 40
+                   else styles["cover_doc_name_small"])],                # row 2
         [Paragraph(f"Translated on: {date_str} at {time_str}",          # row 3
                    styles["cover_meta"])],
         [Paragraph(                                                       # row 4
@@ -248,18 +262,17 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             styles["cover_meta"],
         )])
 
-    # rowHeights forces each row to a fixed height — padding commands alone
-    # don't prevent ReportLab from collapsing rows to content-height only.
+    # None for row 2 = ReportLab auto-sizes to fit the content (handles long/wrapping names).
+    # All other rows use fixed heights to prevent collapsing.
     cover_row_heights = [
-        110,  # row 0: "LegalClear"
-        50,   # row 1: subtitle
-        48,   # row 2: document name
-        24,   # row 3: "Translated on"
-        80,   # row 4: disclaimer (or original filename if present)
+        110,   # row 0: "LegalClear"
+        50,    # row 1: subtitle
+        None,  # row 2: document name — auto-height so long names never clip
+        30,    # row 3: "Translated on"
+        80,    # row 4: disclaimer (or original filename if present)
     ]
     if original_filename:
-        # Insert row height for the original filename row; push disclaimer height to last
-        cover_row_heights = [110, 50, 48, 24, 32, 80]
+        cover_row_heights = [110, 50, None, 30, 36, 80]
     cover_table = Table(cover_bg_data, colWidths=[usable_w], rowHeights=cover_row_heights)
     cover_table.setStyle(
         TableStyle(

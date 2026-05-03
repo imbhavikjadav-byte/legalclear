@@ -13,12 +13,14 @@ import { getErrorMessage } from "./utils/formatters"
 export default function App() {
   const [translationData, setTranslationData] = useState(null)
   const [originalFilename, setOriginalFilename] = useState(null)
+  const [userDocumentName, setUserDocumentName] = useState(null) // always the user-entered name
   const [isLoading, setIsLoading] = useState(false)
 
   async function handleTranslate(text, name) {
     setIsLoading(true)
     setTranslationData(null)
-    setOriginalFilename(null) // pasted text — no original file
+    setOriginalFilename(null)
+    setUserDocumentName(name)
     try {
       const result = await translateDocument(text, name)
       setTranslationData(result)
@@ -32,7 +34,8 @@ export default function App() {
   async function handleTranslateFile(file, name) {
     setIsLoading(true)
     setTranslationData(null)
-    setOriginalFilename(file.name) // capture the real filename
+    setOriginalFilename(file.name)
+    setUserDocumentName(name)
     try {
       const result = await translateFile(file, name)
       setTranslationData(result)
@@ -46,6 +49,7 @@ export default function App() {
   function handleReset() {
     setTranslationData(null)
     setOriginalFilename(null)
+    setUserDocumentName(null)
   }
 
   return (
@@ -87,6 +91,7 @@ export default function App() {
         {translationData && !isLoading && (
           <ResultsPanel
             data={translationData}
+            documentName={userDocumentName || translationData.document_name}
             originalFilename={originalFilename}
             onReset={handleReset}
           />

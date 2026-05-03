@@ -9,7 +9,9 @@ import { generatePdf, sendEmail } from '../services/api'
 import { getErrorMessage } from '../utils/formatters'
 import { Copy, CheckCheck } from 'lucide-react'
 
-export default function ResultsPanel({ data, originalFilename, onReset }) {
+export default function ResultsPanel({ data, documentName, originalFilename, onReset }) {
+  // documentName is always what the user typed — never the AI-interpreted name
+  const pdfName = documentName || data.document_name
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [isSending, setIsSending] = useState(false)
@@ -18,12 +20,12 @@ export default function ResultsPanel({ data, originalFilename, onReset }) {
   async function handleDownloadPdf() {
     setIsGeneratingPdf(true)
     try {
-      const response = await generatePdf(data, data.document_name, originalFilename)
+      const response = await generatePdf(data, pdfName, originalFilename)
       const blob = new Blob([response.data], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `LegalClear-${data.document_name.replace(/\s+/g, '-')}.pdf`
+      a.download = `LegalClear-${pdfName.replace(/\s+/g, '-')}.pdf`
       a.click()
       URL.revokeObjectURL(url)
       toast.success('PDF downloaded successfully!')
@@ -37,7 +39,7 @@ export default function ResultsPanel({ data, originalFilename, onReset }) {
   async function handleSendEmail(email) {
     setIsSending(true)
     try {
-      await sendEmail(email, data, data.document_name, originalFilename)
+      await sendEmail(email, data, pdfName, originalFilename)
       toast.success(`Report sent to ${email}!`)
       setShowEmailModal(false)
     } catch (err) {
