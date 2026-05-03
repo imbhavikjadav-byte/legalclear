@@ -76,7 +76,7 @@ def send_email_with_pdf(
     document_name: str,
 ) -> None:
     sendgrid_key = os.getenv("SENDGRID_API_KEY", "").strip()
-    email_from = os.getenv("EMAIL_FROM", "legalclear@example.com").strip()
+    email_from = (os.getenv("EMAIL_FROM", "legalclear@example.com").strip(), "Legal Clear")
 
     now = datetime.now(timezone.utc)
     date_str = f"{now.day} {now.strftime('%B %Y')}"  # cross-platform, e.g. "3 May 2026"
