@@ -14,7 +14,7 @@ export default function LoadingIndicator() {
           Analysing your document…
         </p>
         <p className="text-[#94A3B8] text-sm mt-1">
-          This may take a few seconds to minutes based on the size of documents
+          This may take a few seconds to minutes based on the size of document
         </p>
       </div>
       <div className="flex gap-1.5">
