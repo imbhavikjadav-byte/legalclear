@@ -48,6 +48,7 @@ export default function App() {
     setOriginalFilename(null)
     setUserDocumentName(name)
     setIsStreaming(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
 
     await translateDocumentStream(
       text,
@@ -81,6 +82,7 @@ export default function App() {
     setOriginalFilename(file.name)
     setUserDocumentName(name)
     setIsStreaming(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
 
     await translateFileStream(
       file,
@@ -173,8 +175,10 @@ export default function App() {
           </div>
         )}
 
+
+
         {isStreaming && (
-          <div className="flex-1 flex items-center justify-center px-4">
+          <div className={streamingMeta ? 'px-4' : 'flex-1 flex items-center justify-center px-4'}>
             <LoadingIndicator />
           </div>
         )}

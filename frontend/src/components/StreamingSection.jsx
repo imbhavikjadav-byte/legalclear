@@ -34,13 +34,15 @@ export default function StreamingSection({ section, index, isLast = false }) {
       <div className={`bg-[#1A2F4E] border rounded-xl overflow-hidden mb-3 transition-colors ${
           isLast ? 'border-[#F59E0B] shadow-[0_0_0_2px_rgba(245,158,11,0.2)] animate-pulse-border' : 'border-[#334155]'
         }`}>
-        {/* Header row — matches SectionAccordion */}
-        <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <span className="text-[#94A3B8] text-sm font-mono shrink-0">§{section.section_id}</span>
-            <span className="text-[#F8FAFC] font-semibold text-sm truncate">{section.title}</span>
+        {/* Header row */}
+        <div className="px-4 py-3">
+          {/* Title row */}
+          <div className="flex items-start gap-2 mb-2">
+            <span className="text-[#94A3B8] text-sm font-mono shrink-0 mt-0.5">§{section.section_id}</span>
+            <span className="text-[#F8FAFC] font-semibold text-sm leading-snug break-words min-w-0">{section.title}</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Badges row */}
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${catColour}`}>
               {section.category}
             </span>
