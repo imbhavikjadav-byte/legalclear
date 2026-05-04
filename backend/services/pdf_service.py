@@ -97,6 +97,10 @@ def _build_styles():
         fontName="Helvetica-Bold",
         fontSize=13,
         textColor=DARK_NAVY,
+        alignment=TA_LEFT,
+        leftIndent=0,
+        firstLineIndent=0,
+        rightIndent=0,
         spaceBefore=10,
         spaceAfter=4,
     )
@@ -147,6 +151,14 @@ def _build_styles():
         textColor=WHITE,
         alignment=TA_CENTER,
     )
+    table_header_text = ParagraphStyle(
+        "TableHeaderText",
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        textColor=WHITE,
+        leading=14,
+        spaceAfter=4,
+    )
 
     return {
         "cover_title": cover_title,
@@ -157,6 +169,7 @@ def _build_styles():
         "cover_disclaimer": cover_disclaimer,
         "section_heading": section_heading,
         "body_text": body_text,
+        "table_header_text": table_header_text,
         "excerpt_text": excerpt_text,
         "risk_title": risk_title_style,
         "risk_body": risk_body_style,
@@ -303,11 +316,12 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
     parties = translation_data.get("parties", [])
     if parties:
         story.append(Paragraph("<b>Parties Identified</b>", styles["section_heading"]))
+        story.append(Spacer(1, 4))
         party_table_data = [
             [
-                Paragraph("<b>Name</b>", styles["body_text"]),
-                Paragraph("<b>Role</b>", styles["body_text"]),
-                Paragraph("<b>Description</b>", styles["body_text"]),
+                Paragraph("<b>Name</b>", styles["table_header_text"]),
+                Paragraph("<b>Role</b>", styles["table_header_text"]),
+                Paragraph("<b>Description</b>", styles["table_header_text"]),
             ]
         ]
         for p in parties:
@@ -338,12 +352,13 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
 
     # Stats
     story.append(Paragraph("<b>Analysis Statistics</b>", styles["section_heading"]))
+    story.append(Spacer(1, 4))
     overall = translation_data.get("overall_risk_level", "LOW")
     overall_colour = RISK_LEVEL_COLOURS.get(overall, SUCCESS_GREEN)
     stats_data = [
         [
-            Paragraph("<b>Metric</b>", styles["body_text"]),
-            Paragraph("<b>Value</b>", styles["body_text"]),
+            Paragraph("<b>Metric</b>", styles["table_header_text"]),
+            Paragraph("<b>Value</b>", styles["table_header_text"]),
         ],
         ["Total Sections Reviewed", str(translation_data.get("total_clauses_reviewed", 0))],
         ["High Risk Flags", str(translation_data.get("high_risk_count", 0))],

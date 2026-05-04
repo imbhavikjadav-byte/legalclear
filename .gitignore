@@ -22,3 +22,6 @@ Thumbs.db
 .idea/
 *.suo
 *.swp
+
+# Test PDFs
+test_output.pdf
