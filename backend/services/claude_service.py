@@ -2,6 +2,7 @@ import json
 import os
 import re
 import anthropic
+from anthropic import APIStatusError, APITimeoutError, APIConnectionError
 
 SYSTEM_PROMPT = """You are LegalClear, an expert legal document analyser. Your role is to translate legal documents into plain English that any adult can understand, and to clearly identify risks and obligations for the person who is being asked to agree to the document (referred to as "the user").
 
@@ -75,52 +76,76 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+# Claude Sonnet 4.5 hard limits
+_MAX_OUTPUT_TOKENS = 8192   # model's actual output token ceiling
+_SDK_TIMEOUT      = 1800.0  # 30 minutes — httpx connect/read timeout passed to SDK
+
+
 def translate_document(document_text: str, document_name: str) -> dict:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured.")
 
-    # 600s timeout — large documents (10+ pages) can take 3-5 minutes to analyse
-    client = anthropic.Anthropic(api_key=api_key, timeout=600.0)
+    # httpx.Timeout(total, connect, read, write, pool) — all set to 30 min
+    sdk_timeout = anthropic.Timeout(
+        timeout=_SDK_TIMEOUT,
+        connect=30.0,
+        read=_SDK_TIMEOUT,
+        write=60.0,
+        pool=10.0,
+    )
+    client = anthropic.Anthropic(api_key=api_key, timeout=sdk_timeout)
+
     user_message = USER_MESSAGE_TEMPLATE.format(
         document_name=document_name,
         document_text=document_text,
     )
 
-    def call_claude() -> str:
-        message = client.messages.create(
+    def _call(extra_messages=None) -> str:
+        """Single Claude call; extra_messages appended after the user turn."""
+        messages = [{"role": "user", "content": user_message}]
+        if extra_messages:
+            messages.extend(extra_messages)
+        response = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=16000,
+            max_tokens=_MAX_OUTPUT_TOKENS,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=messages,
         )
-        return message.content[0].text
+        return response.content[0].text
 
-    # First attempt — catch everything so any failure falls through to the retry
+    # --- Attempt 1: straightforward call ---
+    raw = None
+    first_exc = None
     try:
-        raw = call_claude()
+        raw = _call()
         return _extract_json(raw)
-    except Exception:
-        pass
-
-    # Retry with explicit JSON instruction
-    try:
-        retry_client = anthropic.Anthropic(api_key=api_key, timeout=600.0)
-        retry_message = retry_client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            messages=[
-                {"role": "user", "content": user_message},
-                {
-                    "role": "assistant",
-                    "content": "I will now return only the valid JSON object with no additional text:",
-                },
-            ],
-        )
-        raw = retry_message.content[0].text
-        return _extract_json(raw)
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError):
+        # Claude responded but JSON was malformed — retry with stricter prompt
+        first_exc = None  # not a hard failure; fall through to retry
+    except (APITimeoutError, APIConnectionError, APIStatusError) as exc:
+        # Hard API failure — surface immediately, no point retrying
         raise RuntimeError(
-            "We were unable to process this document. Please try again or simplify the input."
+            f"Claude API error ({type(exc).__name__}): {exc}"
         ) from exc
+    except Exception as exc:
+        first_exc = exc  # unexpected; try once more
+
+    # --- Attempt 2: retry only for JSON parse failures or unexpected errors ---
+    try:
+        extra = [{
+            "role": "assistant",
+            "content": "I will now return only the valid JSON object with no additional text:",
+        }]
+        raw = _call(extra_messages=extra)
+        return _extract_json(raw)
+    except (APITimeoutError, APIConnectionError, APIStatusError) as exc:
+        raise RuntimeError(
+            f"Claude API error on retry ({type(exc).__name__}): {exc}"
+        ) from exc
+    except Exception as exc:
+        cause = first_exc or exc
+        raise RuntimeError(
+            "We were unable to process this document. "
+            "Please try again or split the document into smaller sections."
+        ) from cause

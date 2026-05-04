@@ -58,4 +58,6 @@ if __name__ == "__main__":
         app,
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", 8001)),
+        timeout_keep_alive=1800,
+        timeout_graceful_shutdown=1800,
     )

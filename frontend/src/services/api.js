@@ -7,8 +7,8 @@ const api = axios.create({
   timeout: 30000, // 30s for all non-translate calls
 })
 
-// Translate calls can take 3-5 minutes for large documents
-const TRANSLATE_TIMEOUT = 600000 // 10 minutes
+// Translate calls: no practical upper limit — 30 min covers the largest documents
+const TRANSLATE_TIMEOUT = 1800000 // 30 minutes
 
 export async function translateDocument(documentText, documentName) {
   const response = await api.post(

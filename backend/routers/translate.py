@@ -1,3 +1,5 @@
+import asyncio
+from functools import partial
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from models.request_models import TranslateRequest
 from services.claude_service import translate_document
@@ -6,10 +8,17 @@ from utils.file_extractor import extract_text_from_file
 router = APIRouter()
 
 
+async def _run_translate(text: str, name: str) -> dict:
+    """Run the blocking Claude call in a thread pool so it never blocks the event loop.
+    Without this, uvicorn kills the request as a hung async handler."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, partial(translate_document, text, name))
+
+
 @router.post("/translate")
 async def translate(request: TranslateRequest):
     try:
-        result = translate_document(request.document_text, request.document_name)
+        result = await _run_translate(request.document_text, request.document_name)
         return result
     except RuntimeError as exc:
         raise HTTPException(
@@ -43,7 +52,7 @@ async def translate_file(
         text = text[:50000]
 
     try:
-        result = translate_document(text, document_name)
+        result = await _run_translate(text, document_name)
         return result
     except RuntimeError as exc:
         raise HTTPException(
