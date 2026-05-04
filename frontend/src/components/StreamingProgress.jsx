@@ -78,7 +78,7 @@ export default function StreamingProgress({ isStreaming, streamingComplete, sect
       </div>
 
       {sectionsCount > 0 && !streamingComplete && (
-        <div className="mt-3 text-center">
+        <div className="mt-3">
           <p className="text-[#94A3B8] text-xs">
             ✓ {sectionsCount} sections analysed
           </p>
