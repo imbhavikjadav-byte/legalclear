@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Toaster } from "react-hot-toast"
 import toast from "react-hot-toast"
 import Navbar from "./components/Navbar"
@@ -7,47 +7,138 @@ import InputPanel from "./components/InputPanel"
 import ResultsPanel from "./components/ResultsPanel"
 import LoadingIndicator from "./components/LoadingIndicator"
 import Footer from "./components/Footer"
-import { translateDocument, translateFile } from "./services/api"
+import { translateDocumentStream, translateFileStream, generatePdf, sendEmail } from "./services/api"
 import { getErrorMessage } from "./utils/formatters"
 
 export default function App() {
-  const [translationData, setTranslationData] = useState(null)
+  // Streaming state management
+  const [streamingMeta, setStreamingMeta] = useState(null)
+  const [streamingSections, setStreamingSections] = useState([])
+  const [streamingFinal, setStreamingFinal] = useState(null)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingComplete, setStreamingComplete] = useState(false)
+  const [streamError, setStreamError] = useState(null)
   const [originalFilename, setOriginalFilename] = useState(null)
-  const [userDocumentName, setUserDocumentName] = useState(null) // always the user-entered name
-  const [isLoading, setIsLoading] = useState(false)
+  const [userDocumentName, setUserDocumentName] = useState(null)
+
+  // Assemble complete result for PDF/email when streaming is done
+  const assembledResult = useMemo(() => {
+    if (!streamingComplete || !streamingMeta || !streamingFinal) return null
+    return {
+      document_name: streamingMeta.document_name,
+      parties: streamingMeta.parties,
+      summary: streamingMeta.summary,
+      sections: streamingSections,
+      overall_risk_level: streamingFinal.overall_risk_level,
+      overall_risk_explanation: streamingFinal.overall_risk_explanation,
+      total_clauses_reviewed: streamingFinal.total_clauses_reviewed,
+      high_risk_count: streamingFinal.high_risk_count,
+      medium_risk_count: streamingFinal.medium_risk_count,
+      note_count: streamingFinal.note_count
+    }
+  }, [streamingComplete, streamingMeta, streamingSections, streamingFinal])
 
   async function handleTranslate(text, name) {
-    setIsLoading(true)
-    setTranslationData(null)
+    // Reset all streaming state
+    setStreamingMeta(null)
+    setStreamingSections([])
+    setStreamingFinal(null)
+    setStreamingComplete(false)
+    setStreamError(null)
     setOriginalFilename(null)
     setUserDocumentName(name)
-    try {
-      const result = await translateDocument(text, name)
-      setTranslationData(result)
-    } catch (err) {
-      toast.error(getErrorMessage(err), { duration: 10000 })
-    } finally {
-      setIsLoading(false)
-    }
+    setIsStreaming(true)
+
+    await translateDocumentStream(
+      text,
+      name,
+      // onMeta
+      (meta) => setStreamingMeta(meta),
+      // onSection — append each section as it arrives
+      (section) => setStreamingSections(prev => [...prev, section]),
+      // onFinal
+      (final) => {
+        setStreamingFinal(final)
+        setStreamingComplete(true)
+        setIsStreaming(false)
+      },
+      // onError
+      (error) => {
+        setStreamError(error)
+        setIsStreaming(false)
+        toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
+      }
+    )
   }
 
   async function handleTranslateFile(file, name) {
-    setIsLoading(true)
-    setTranslationData(null)
+    // Reset all streaming state
+    setStreamingMeta(null)
+    setStreamingSections([])
+    setStreamingFinal(null)
+    setStreamingComplete(false)
+    setStreamError(null)
     setOriginalFilename(file.name)
     setUserDocumentName(name)
+    setIsStreaming(true)
+
+    await translateFileStream(
+      file,
+      name,
+      // onMeta
+      (meta) => setStreamingMeta(meta),
+      // onSection — append each section as it arrives
+      (section) => setStreamingSections(prev => [...prev, section]),
+      // onFinal
+      (final) => {
+        setStreamingFinal(final)
+        setStreamingComplete(true)
+        setIsStreaming(false)
+      },
+      // onError
+      (error) => {
+        setStreamError(error)
+        setIsStreaming(false)
+        toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
+      }
+    )
+  }
+
+  async function handleDownloadPdf() {
+    if (!assembledResult) return
+
     try {
-      const result = await translateFile(file, name)
-      setTranslationData(result)
+      const response = await generatePdf(assembledResult, userDocumentName, originalFilename)
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `LegalClear-${userDocumentName.replace(/\s+/g, '-')}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('PDF downloaded successfully!')
     } catch (err) {
       toast.error(getErrorMessage(err), { duration: 10000 })
-    } finally {
-      setIsLoading(false)
+    }
+  }
+
+  async function handleSendEmail(email) {
+    if (!assembledResult) return
+
+    try {
+      await sendEmail(email, assembledResult, userDocumentName, originalFilename)
+      toast.success(`Report sent to ${email}!`)
+    } catch (err) {
+      toast.error(getErrorMessage(err), { duration: 10000 })
     }
   }
 
   function handleReset() {
-    setTranslationData(null)
+    setStreamingMeta(null)
+    setStreamingSections([])
+    setStreamingFinal(null)
+    setStreamingComplete(false)
+    setStreamError(null)
     setOriginalFilename(null)
     setUserDocumentName(null)
   }
@@ -66,34 +157,39 @@ export default function App() {
           error: { iconTheme: { primary: "#EF4444", secondary: "#1A2F4E" } },
         }}
       />
-      <Navbar />
+      <Navbar centered={streamingComplete} />
 
       <main className="flex-1 pt-16 flex flex-col">
-        {!translationData && !isLoading && (
+        {!streamingMeta && !isStreaming && (
           <div className="w-full">
             <HeroSection />
             <div className="max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-20">
               <InputPanel
                 onTranslate={handleTranslate}
                 onTranslateFile={handleTranslateFile}
-                isLoading={isLoading}
+                isLoading={isStreaming}
               />
             </div>
           </div>
         )}
 
-        {isLoading && (
+        {isStreaming && (
           <div className="flex-1 flex items-center justify-center px-4">
             <LoadingIndicator />
           </div>
         )}
 
-        {translationData && !isLoading && (
+        {streamingMeta && (
           <ResultsPanel
-            data={translationData}
-            documentName={userDocumentName || translationData.document_name}
+            streamingMeta={streamingMeta}
+            streamingSections={streamingSections}
+            streamingFinal={streamingFinal}
+            streamingComplete={streamingComplete}
+            documentName={userDocumentName || streamingMeta.document_name}
             originalFilename={originalFilename}
             onReset={handleReset}
+            onDownloadPdf={handleDownloadPdf}
+            onSendEmail={handleSendEmail}
           />
         )}
       </main>

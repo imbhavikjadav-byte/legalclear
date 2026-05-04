@@ -1,9 +1,11 @@
 import asyncio
+import json
 from functools import partial
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from models.request_models import TranslateRequest
 from services.claude_service import translate_document, translate_document_sse
+from services.stream_claude_service import stream_translation
 from utils.file_extractor import extract_text_from_file
 
 # These headers are essential for SSE through Nginx / AWS proxies:
@@ -109,4 +111,73 @@ async def translate_file_stream(
         translate_document_sse(text, document_name),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
+    )
+
+# ── NEW STREAMING ENDPOINTS — Progressive Rendering ──────────────────────────
+# These use the new streaming Claude service for real-time section delivery
+
+@router.post("/translate-stream-new")
+async def translate_stream_new(request: TranslateRequest):
+    async def event_generator():
+        try:
+            async for chunk in stream_translation(
+                document_text=request.document_text,
+                document_name=request.document_name
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(exc)}})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@router.post("/translate-file-stream-new")
+async def translate_file_stream_new(
+    file: UploadFile = File(...),
+    document_name: str = Form(...),
+):
+    text = await extract_text_from_file(file)
+
+    if len(text) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": True,
+                "code": "VALIDATION_ERROR",
+                "message": "Your document is too short. Please provide at least 100 characters.",
+            },
+        )
+
+    async def event_generator():
+        try:
+            async for chunk in stream_translation(
+                document_text=text,
+                document_name=document_name
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(exc)}})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
     )

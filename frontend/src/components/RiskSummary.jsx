@@ -3,8 +3,17 @@ import RiskFlag from './RiskFlag'
 export default function RiskSummary({ sections }) {
   const allFlags = []
   for (const sec of sections) {
-    for (const flag of sec.risk_flags || []) {
-      allFlags.push({ ...flag, sectionTitle: sec.title })
+    for (const raw of sec.risk_flags || []) {
+      // Skip anything that isn't a plain object (e.g. strings from a bad API response)
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+      // Normalise alternate key names Claude might use
+      const flag = {
+        severity: (raw.severity || raw.level || raw.type || 'NOTE').toUpperCase(),
+        title: raw.title || raw.name || raw.label || '',
+        explanation: raw.explanation || raw.description || raw.text || '',
+        sectionTitle: sec.title,
+      }
+      allFlags.push(flag)
     }
   }
 
@@ -28,8 +37,14 @@ export default function RiskSummary({ sections }) {
       {high.length > 0 && (
         <Section title="🔴 High Risk" flags={high} />
       )}
+      {high.length > 0 && medium.length > 0 && (
+        <hr className="border-[#334155] my-5" />
+      )}
       {medium.length > 0 && (
         <Section title="🟡 Medium Risk" flags={medium} />
+      )}
+      {(high.length > 0 || medium.length > 0) && notes.length > 0 && (
+        <hr className="border-[#334155] my-5" />
       )}
       {notes.length > 0 && (
         <Section title="🔵 Notes" flags={notes} />

@@ -75,6 +75,116 @@ export async function translateFile(file, documentName) {
   return _readSSEStream(response)
 }
 
+export async function translateDocumentStream(
+  documentText,
+  documentName,
+  onMeta,
+  onSection,
+  onFinal,
+  onError
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/translate-stream-new`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        document_text: documentText,
+        document_name: documentName
+      })
+    }
+  )
+
+  if (!response.ok) {
+    onError('Failed to connect to translation service.')
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') return
+
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.type === 'meta')      onMeta(parsed.data)
+        if (parsed.type === 'section')   onSection(parsed.data)
+        if (parsed.type === 'final')     onFinal(parsed.data)
+        if (parsed.type === 'error')     onError(parsed.data.message)
+        // heartbeat chunks are silently ignored
+      } catch (e) {
+        // silently ignore malformed chunks
+      }
+    }
+  }
+}
+
+export async function translateFileStream(
+  file,
+  documentName,
+  onMeta,
+  onSection,
+  onFinal,
+  onError
+) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('document_name', documentName)
+
+  const response = await fetch(`${API_BASE_URL}/api/translate-file-stream-new`, {
+    method: 'POST',
+    body: formData,
+    // No Content-Type header — browser sets it automatically with the correct boundary
+  })
+
+  if (!response.ok) {
+    onError('Failed to connect to translation service.')
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') return
+
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.type === 'meta')      onMeta(parsed.data)
+        if (parsed.type === 'section')   onSection(parsed.data)
+        if (parsed.type === 'final')     onFinal(parsed.data)
+        if (parsed.type === 'error')     onError(parsed.data.message)
+        // heartbeat chunks are silently ignored
+      } catch (e) {
+        // silently ignore malformed chunks
+      }
+    }
+  }
+}
+
 // PDF generation and email can take time with large documents
 const PDF_EMAIL_TIMEOUT = 120000 // 2 minutes
 

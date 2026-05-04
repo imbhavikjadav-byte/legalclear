@@ -325,11 +325,12 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             ]
         ]
         for p in parties:
+            description = p.get("description") or p.get("role", "")
             party_table_data.append(
                 [
                     Paragraph(str(p.get("name", "")), styles["body_text"]),
                     Paragraph(str(p.get("role", "")), styles["body_text"]),
-                    Paragraph(str(p.get("description", "")), styles["body_text"]),
+                    Paragraph(str(description), styles["body_text"]),
                 ]
             )
         pt = Table(party_table_data, colWidths=[40 * mm, 40 * mm, usable_w - 80 * mm])
@@ -398,7 +399,8 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
     all_flags = []
     for sec in sections:
         for flag in sec.get("risk_flags", []):
-            all_flags.append((sec.get("title", ""), flag))
+            if isinstance(flag, dict):
+                all_flags.append((sec.get("title", ""), flag))
 
     for severity_label, display_label in [("HIGH", "🔴 High Risk"), ("MEDIUM", "🟡 Medium Risk"), ("NOTE", "🔵 Notes")]:
         flags_for_level = [(t, f) for (t, f) in all_flags if f.get("severity") == severity_label]
@@ -408,14 +410,18 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
         story.append(Paragraph(f"<b>{display_text}</b>", styles["section_heading"]))
         bg_col, border_col, _ = SEVERITY_COLOURS.get(severity_label, (NOTE_BG, NOTE_BORDER, ""))
         for section_title, flag in flags_for_level:
+            if not isinstance(flag, dict):
+                continue
+            flag_title = str(flag.get("title") or flag.get("name") or "")
+            flag_explanation = str(flag.get("explanation") or flag.get("description") or "")
             flag_data = [
                 [
                     Paragraph(
-                        f"<b>{flag.get('title', '')}</b> <font color='#64748B'>(from: {section_title})</font>",
+                        f"<b>{flag_title}</b> <font color='#64748B'>(from: {section_title})</font>",
                         styles["risk_title"],
                     )
                 ],
-                [Paragraph(flag.get("explanation", ""), styles["risk_body"])],
+                [Paragraph(flag_explanation, styles["risk_body"])],
             ]
             ft = Table(flag_data, colWidths=[usable_w - 10])
             ft.setStyle(
@@ -495,19 +501,24 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
 
         # Risk flags
         for flag in sec.get("risk_flags", []):
-            sev = flag.get("severity", "NOTE")
+            # Guard: flag must be a dict — skip strings or other unexpected types
+            if not isinstance(flag, dict):
+                continue
+            sev = flag.get("severity", "NOTE").upper()
             bg_col, border_col, _ = SEVERITY_COLOURS.get(sev, (NOTE_BG, NOTE_BORDER, ""))
             sev_label = {"HIGH": "[HIGH RISK]", "MEDIUM": "[MEDIUM RISK]", "NOTE": "[NOTE]"}.get(
                 sev, sev
             )
+            flag_title = str(flag.get("title") or flag.get("name") or "")
+            flag_explanation = str(flag.get("explanation") or flag.get("description") or "")
             flag_data = [
                 [
                     Paragraph(
-                        f"<b>{sev_label}: {flag.get('title', '')}</b>",
+                        f"<b>{sev_label}: {flag_title}</b>",
                         styles["risk_title"],
                     )
                 ],
-                [Paragraph(flag.get("explanation", ""), styles["risk_body"])],
+                [Paragraph(flag_explanation, styles["risk_body"])],
             ]
             ft = Table(flag_data, colWidths=[usable_w - 10])
             ft.setStyle(
