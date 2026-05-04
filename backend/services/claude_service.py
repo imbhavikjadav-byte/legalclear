@@ -1,6 +1,8 @@
+import asyncio
 import json
 import os
 import re
+import threading
 import anthropic
 from anthropic import APIStatusError, APITimeoutError, APIConnectionError
 
@@ -149,3 +151,99 @@ def translate_document(document_text: str, document_name: str) -> dict:
             "We were unable to process this document. "
             "Please try again or split the document into smaller sections."
         ) from cause
+
+async def translate_document_sse(document_text: str, document_name: str):
+    """
+    Async generator that yields Server-Sent Events (SSE).
+
+    WHY SSE instead of a plain long-running HTTP request:
+      Nginx (and AWS ALB) have a proxy_read_timeout of 60s by default.
+      They kill ANY connection that produces no bytes for that long, regardless
+      of what the backend is configured for.  SSE keeps the connection alive by
+      sending a 'ping' event every 5 seconds while Claude is still thinking.
+      The X-Accel-Buffering: no response header (set in the router) tells Nginx
+      not to buffer the stream — without it, pings would be held in Nginx's
+      buffer and never reach the client until the whole response is ready,
+      defeating the purpose entirely.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        yield f"data: {json.dumps({'type': 'error', 'message': 'ANTHROPIC_API_KEY is not configured.'})}\n\n"
+        return
+
+    sdk_timeout = anthropic.Timeout(
+        timeout=_SDK_TIMEOUT,
+        connect=30.0,
+        read=_SDK_TIMEOUT,
+        write=60.0,
+        pool=10.0,
+    )
+    client = anthropic.Anthropic(api_key=api_key, timeout=sdk_timeout)
+    user_message = USER_MESSAGE_TEMPLATE.format(
+        document_name=document_name,
+        document_text=document_text,
+    )
+
+    # get_running_loop() is safe here because this is called from an async route
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _stream_in_thread():
+        """Runs in a daemon thread; uses the Anthropic streaming API to collect
+        the full response text, then pushes it onto the async queue."""
+        try:
+            collected = ""
+            with client.messages.stream(
+                model="claude-sonnet-4-5",
+                max_tokens=_MAX_OUTPUT_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+            ) as stream:
+                for chunk in stream.text_stream:
+                    collected += chunk
+            loop.call_soon_threadsafe(queue.put_nowait, ("done", collected))
+        except Exception as exc:
+            loop.call_soon_threadsafe(queue.put_nowait, ("error", str(exc)))
+
+    thread = threading.Thread(target=_stream_in_thread, daemon=True)
+    thread.start()
+
+    yield f"data: {json.dumps({'type': 'status', 'message': 'Analysing your document...'})}\n\n"
+
+    # Drain queue; every 5 s of silence we send a ping to keep proxies alive
+    while True:
+        try:
+            event_type, payload = await asyncio.wait_for(queue.get(), timeout=5.0)
+        except asyncio.TimeoutError:
+            # Heartbeat — keeps Nginx / AWS ALB from killing the connection
+            yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+            continue
+
+        if event_type == "done":
+            # Try to parse; if malformed, retry once with explicit instruction
+            try:
+                result = _extract_json(payload)
+                yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+            except (json.JSONDecodeError, ValueError):
+                try:
+                    retry_msg = client.messages.create(
+                        model="claude-sonnet-4-5",
+                        max_tokens=_MAX_OUTPUT_TOKENS,
+                        system=SYSTEM_PROMPT,
+                        messages=[
+                            {"role": "user", "content": user_message},
+                            {
+                                "role": "assistant",
+                                "content": "I will now return only the valid JSON object with no additional text:",
+                            },
+                        ],
+                    )
+                    result = _extract_json(retry_msg.content[0].text)
+                    yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+                except Exception as exc2:
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(exc2)})}\n\n"
+            break
+
+        elif event_type == "error":
+            yield f"data: {json.dumps({'type': 'error', 'message': payload})}\n\n"
+            break
