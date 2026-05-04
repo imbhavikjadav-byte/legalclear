@@ -25,7 +25,7 @@ export default function App() {
       const result = await translateDocument(text, name)
       setTranslationData(result)
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      toast.error(getErrorMessage(err), { duration: 10000 })
     } finally {
       setIsLoading(false)
     }
@@ -40,7 +40,7 @@ export default function App() {
       const result = await translateFile(file, name)
       setTranslationData(result)
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      toast.error(getErrorMessage(err), { duration: 10000 })
     } finally {
       setIsLoading(false)
     }

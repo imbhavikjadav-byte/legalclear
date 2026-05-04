@@ -30,7 +30,7 @@ export default function ResultsPanel({ data, documentName, originalFilename, onR
       URL.revokeObjectURL(url)
       toast.success('PDF downloaded successfully!')
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      toast.error(getErrorMessage(err), { duration: 10000 })
     } finally {
       setIsGeneratingPdf(false)
     }
@@ -43,7 +43,7 @@ export default function ResultsPanel({ data, documentName, originalFilename, onR
       toast.success(`Report sent to ${email}!`)
       setShowEmailModal(false)
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      toast.error(getErrorMessage(err), { duration: 10000 })
     } finally {
       setIsSending(false)
     }

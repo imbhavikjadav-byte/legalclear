@@ -149,16 +149,14 @@ def _send_via_sendgrid(
     sg = SendGridAPIClient(api_key)
     try:
         response = sg.send(message)
-    except Exception as exc:
-        # Surface the full SendGrid exception (includes auth/sender errors)
-        raise RuntimeError(f"SendGrid API error: {exc}") from exc
+    except Exception:
+        raise RuntimeError(
+            "Unable to send email with SendGrid right now. Please verify your email settings and try again."
+        )
 
     if response.status_code not in (200, 202):
-        body = getattr(response, 'body', b'')
-        if isinstance(body, bytes):
-            body = body.decode('utf-8', errors='replace')
         raise RuntimeError(
-            f"SendGrid returned status {response.status_code}: {body}"
+            "Unable to send email with SendGrid right now. Please verify your email settings and try again."
         )
 
 

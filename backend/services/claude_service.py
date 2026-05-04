@@ -82,11 +82,18 @@ def _extract_json(text: str) -> dict:
 _MAX_OUTPUT_TOKENS = 8192   # model's actual output token ceiling
 _SDK_TIMEOUT      = 1800.0  # 30 minutes — httpx connect/read timeout passed to SDK
 
+_CLAUDE_API_ERROR_MESSAGE = (
+    "Claude AI is unavailable right now. Please try again in a few moments."
+)
+_CLAUDE_PARSE_ERROR_MESSAGE = (
+    "Claude AI returned an invalid response. Please try again or split the document into smaller sections."
+)
+
 
 def translate_document(document_text: str, document_name: str) -> dict:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not configured.")
+        raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
 
     # httpx.Timeout(total, connect, read, write, pool) — all set to 30 min
     sdk_timeout = anthropic.Timeout(
@@ -125,13 +132,11 @@ def translate_document(document_text: str, document_name: str) -> dict:
     except (json.JSONDecodeError, ValueError):
         # Claude responded but JSON was malformed — retry with stricter prompt
         first_exc = None  # not a hard failure; fall through to retry
-    except (APITimeoutError, APIConnectionError, APIStatusError) as exc:
-        # Hard API failure — surface immediately, no point retrying
-        raise RuntimeError(
-            f"Claude API error ({type(exc).__name__}): {exc}"
-        ) from exc
-    except Exception as exc:
-        first_exc = exc  # unexpected; try once more
+    except (APITimeoutError, APIConnectionError, APIStatusError):
+        # Hard API failure — surface a friendly message only.
+        raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
+    except Exception:
+        first_exc = None  # unexpected; try once more
 
     # --- Attempt 2: retry only for JSON parse failures or unexpected errors ---
     try:
@@ -141,16 +146,10 @@ def translate_document(document_text: str, document_name: str) -> dict:
         }]
         raw = _call(extra_messages=extra)
         return _extract_json(raw)
-    except (APITimeoutError, APIConnectionError, APIStatusError) as exc:
-        raise RuntimeError(
-            f"Claude API error on retry ({type(exc).__name__}): {exc}"
-        ) from exc
-    except Exception as exc:
-        cause = first_exc or exc
-        raise RuntimeError(
-            "We were unable to process this document. "
-            "Please try again or split the document into smaller sections."
-        ) from cause
+    except (APITimeoutError, APIConnectionError, APIStatusError):
+        raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
+    except Exception:
+        raise RuntimeError(_CLAUDE_PARSE_ERROR_MESSAGE)
 
 async def translate_document_sse(document_text: str, document_name: str):
     """
@@ -168,7 +167,7 @@ async def translate_document_sse(document_text: str, document_name: str):
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        yield f"data: {json.dumps({'type': 'error', 'message': 'ANTHROPIC_API_KEY is not configured.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'message': _CLAUDE_API_ERROR_MESSAGE})}\n\n"
         return
 
     sdk_timeout = anthropic.Timeout(
@@ -202,8 +201,8 @@ async def translate_document_sse(document_text: str, document_name: str):
                 for chunk in stream.text_stream:
                     collected += chunk
             loop.call_soon_threadsafe(queue.put_nowait, ("done", collected))
-        except Exception as exc:
-            loop.call_soon_threadsafe(queue.put_nowait, ("error", str(exc)))
+        except Exception:
+            loop.call_soon_threadsafe(queue.put_nowait, ("error", _CLAUDE_API_ERROR_MESSAGE))
 
     thread = threading.Thread(target=_stream_in_thread, daemon=True)
     thread.start()
@@ -240,8 +239,8 @@ async def translate_document_sse(document_text: str, document_name: str):
                     )
                     result = _extract_json(retry_msg.content[0].text)
                     yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
-                except Exception as exc2:
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(exc2)})}\n\n"
+                except Exception:
+                    yield f"data: {json.dumps({'type': 'error', 'message': _CLAUDE_PARSE_ERROR_MESSAGE})}\n\n"
             break
 
         elif event_type == "error":
