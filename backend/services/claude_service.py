@@ -171,14 +171,46 @@ def _extract_parties_from_text(client, document_text: str) -> list[dict]:
     return []
 
 
+_CHUNK_MESSAGE_TEMPLATE = """\
+This is part {chunk_id} of {total_chunks} from a larger legal document.
+Analyse this text and return ONLY a valid JSON object — no preamble, no explanation, no markdown fences.
+
+The JSON must have exactly this structure:
+{{
+  "summary": "string — 1-2 sentence overview of what this part covers",
+  "sections": [
+    {{
+      "section_id": integer,
+      "title": "string",
+      "category": "one of: Your Rights | Company Rights | Your Obligations | Company Obligations | Termination | Liability & Disputes | Data & Privacy | Payment & Fees | Intellectual Property | Other",
+      "original_excerpt": "string — key legal text this section is based on (max 300 chars)",
+      "plain_english": "string — plain-English explanation of what this clause means for the user",
+      "risk_flags": [
+        {{
+          "severity": "HIGH | MEDIUM | NOTE",
+          "title": "string — short flag title",
+          "explanation": "string — what this risk means for the user"
+        }}
+      ]
+    }}
+  ],
+  "overall_risk_level": "LOW | MEDIUM | HIGH",
+  "overall_risk_explanation": "string — 1-2 sentence explanation",
+  "total_clauses_reviewed": integer,
+  "high_risk_count": integer,
+  "medium_risk_count": integer,
+  "note_count": integer
+}}
+
+Document chunk:
+{chunk_text}"""
+
+
 def _analyze_chunk(client, chunk_text: str, chunk_id: int, total_chunks: int) -> dict:
-    prompt = (
-        f"This is chunk {chunk_id} of {total_chunks} from a larger legal document. "
-        "Analyse this text and return ONLY a valid JSON object with the following fields: "
-        '"summary", "sections", "overall_risk_level", "overall_risk_explanation", "total_clauses_reviewed", "high_risk_count", "medium_risk_count", "note_count". '
-        "Do not include parties, and do not include any text outside the JSON object.\n\n"
-        "Document chunk:\n"
-        + chunk_text
+    prompt = _CHUNK_MESSAGE_TEMPLATE.format(
+        chunk_id=chunk_id,
+        total_chunks=total_chunks,
+        chunk_text=chunk_text,
     )
     response = client.messages.create(
         model="claude-sonnet-4-5",
@@ -194,11 +226,6 @@ def _analyze_chunk(client, chunk_text: str, chunk_id: int, total_chunks: int) ->
 def _merge_chunk_results(chunk_results: list[dict], document_name: str) -> dict:
     all_sections = []
     summaries = []
-    overall_levels = []
-    total_clauses = 0
-    high_risk = 0
-    medium_risk = 0
-    note_count = 0
     explanations = []
 
     for result in chunk_results:
@@ -208,27 +235,49 @@ def _merge_chunk_results(chunk_results: list[dict], document_name: str) -> dict:
         summary = result.get("summary")
         if summary:
             summaries.append(summary.strip())
-        overall_levels.append(result.get("overall_risk_level", "LOW"))
         explanation = result.get("overall_risk_explanation", "").strip()
         if explanation:
             explanations.append(explanation)
-        total_clauses += int(result.get("total_clauses_reviewed", 0) or 0)
-        high_risk += int(result.get("high_risk_count", 0) or 0)
-        medium_risk += int(result.get("medium_risk_count", 0) or 0)
-        note_count += int(result.get("note_count", 0) or 0)
+
+    # Renumber sections sequentially after merging
+    for idx, sec in enumerate(all_sections, start=1):
+        sec["section_id"] = idx
+
+    # Derive risk counts and overall level from actual merged risk_flags — the
+    # single authoritative source. Chunk-level counts from Claude are unreliable
+    # (they may be approximate or inconsistent across chunks).
+    high_risk = 0
+    medium_risk = 0
+    note_count = 0
+    for sec in all_sections:
+        for flag in sec.get("risk_flags", []):
+            severity = (flag.get("severity") or "").upper()
+            if severity == "HIGH":
+                high_risk += 1
+            elif severity == "MEDIUM":
+                medium_risk += 1
+            elif severity == "NOTE":
+                note_count += 1
+
+    if high_risk > 0:
+        overall_risk_level = "HIGH"
+    elif medium_risk > 0:
+        overall_risk_level = "MEDIUM"
+    else:
+        overall_risk_level = "LOW"
 
     return {
         "document_name": document_name,
         "parties": [],
         "summary": (" ".join(summaries).strip()[:800] or "Document analysed in chunks."),
         "sections": all_sections,
-        "overall_risk_level": _choose_overall_risk_level(overall_levels),
+        "overall_risk_level": overall_risk_level,
         "overall_risk_explanation": (
             explanations[0]
             if explanations
             else "This document contains multiple risk areas and was analysed in chunks."
         ),
-        "total_clauses_reviewed": total_clauses,
+        "total_clauses_reviewed": len(all_sections),
         "high_risk_count": high_risk,
         "medium_risk_count": medium_risk,
         "note_count": note_count,
