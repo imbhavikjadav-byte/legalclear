@@ -70,16 +70,16 @@ export default function App() {
 
       <main className="flex-1 pt-16 flex flex-col">
         {!translationData && !isLoading && (
-          <>
+          <div className="w-full">
             <HeroSection />
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+            <div className="max-w-3xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-20">
               <InputPanel
                 onTranslate={handleTranslate}
                 onTranslateFile={handleTranslateFile}
                 isLoading={isLoading}
               />
             </div>
-          </>
+          </div>
         )}
 
         {isLoading && (
