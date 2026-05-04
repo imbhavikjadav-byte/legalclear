@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
 import { Toaster } from "react-hot-toast"
 import toast from "react-hot-toast"
 import Navbar from "./components/Navbar"
@@ -12,6 +12,7 @@ import { getErrorMessage } from "./utils/formatters"
 
 export default function App() {
   // Streaming state management
+  const abortControllerRef = useRef(null)
   const [streamingMeta, setStreamingMeta] = useState(null)
   const [streamingSections, setStreamingSections] = useState([])
   const [streamingFinal, setStreamingFinal] = useState(null)
@@ -38,8 +39,24 @@ export default function App() {
     }
   }, [streamingComplete, streamingMeta, streamingSections, streamingFinal])
 
+  function handleStop() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setStreamingMeta(null)
+    setStreamingSections([])
+    setStreamingFinal(null)
+    setStreamingComplete(false)
+    setStreamError(null)
+    setIsStreaming(false)
+    setOriginalFilename(null)
+    setUserDocumentName(null)
+  }
+
   async function handleTranslate(text, name) {
     // Reset all streaming state
+    abortControllerRef.current = new AbortController()
     setStreamingMeta(null)
     setStreamingSections([])
     setStreamingFinal(null)
@@ -68,12 +85,14 @@ export default function App() {
         setStreamError(error)
         setIsStreaming(false)
         toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
-      }
+      },
+      abortControllerRef.current.signal
     )
   }
 
   async function handleTranslateFile(file, name) {
     // Reset all streaming state
+    abortControllerRef.current = new AbortController()
     setStreamingMeta(null)
     setStreamingSections([])
     setStreamingFinal(null)
@@ -102,7 +121,8 @@ export default function App() {
         setStreamError(error)
         setIsStreaming(false)
         toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
-      }
+      },
+      abortControllerRef.current.signal
     )
   }
 
@@ -179,7 +199,7 @@ export default function App() {
 
         {isStreaming && !streamingMeta && (
           <div className="flex-1 flex items-center justify-center px-4">
-            <LoadingIndicator />
+            <LoadingIndicator onStop={handleStop} />
           </div>
         )}
 
@@ -192,6 +212,7 @@ export default function App() {
             documentName={userDocumentName || streamingMeta.document_name}
             originalFilename={originalFilename}
             onReset={handleReset}
+            onStop={handleStop}
             onDownloadPdf={handleDownloadPdf}
             onSendEmail={handleSendEmail}
           />

@@ -20,6 +20,7 @@ export default function ResultsPanel({
   documentName,
   originalFilename,
   onReset,
+  onStop,
   onDownloadPdf,
   onSendEmail
 }) {
@@ -128,6 +129,7 @@ export default function ResultsPanel({
             isStreaming={!streamingComplete}
             streamingComplete={streamingComplete}
             sectionsCount={streamingSections.length}
+            onStop={onStop}
           />
         )}
 

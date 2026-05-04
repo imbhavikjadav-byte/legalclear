@@ -72,7 +72,8 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading }) 
         {/* Document Name */}
         <div className="mb-4">
           <label className="block text-[#94A3B8] text-sm font-medium mb-1.5">
-            Document Name <span className="text-[#EF4444]">*</span>
+            Report Title <span className="text-[#EF4444]">*</span>
+            <span className="text-[#475569] font-normal text-xs ml-1">— appears on your report</span>
           </label>
           <input
             type="text"

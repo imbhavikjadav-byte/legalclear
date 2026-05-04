@@ -1,6 +1,6 @@
-import { Scale } from 'lucide-react'
+import { Scale, X } from 'lucide-react'
 
-export default function LoadingIndicator() {
+export default function LoadingIndicator({ onStop }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 gap-6">
       <div className="relative">
@@ -26,6 +26,15 @@ export default function LoadingIndicator() {
           />
         ))}
       </div>
+      {onStop && (
+        <button
+          onClick={onStop}
+          className="flex items-center gap-2 mt-2 px-4 py-2 rounded-lg border border-[#475569] text-[#94A3B8] hover:border-[#EF4444] hover:text-[#EF4444] text-sm transition-colors"
+        >
+          <X className="w-4 h-4" />
+          Cancel and go back
+        </button>
+      )}
     </div>
   )
 }

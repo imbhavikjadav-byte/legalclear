@@ -81,19 +81,28 @@ export async function translateDocumentStream(
   onMeta,
   onSection,
   onFinal,
-  onError
+  onError,
+  signal
 ) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/translate-stream-new`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        document_text: documentText,
-        document_name: documentName
-      })
-    }
-  )
+  let response
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/translate-stream-new`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_text: documentText,
+          document_name: documentName
+        }),
+        signal
+      }
+    )
+  } catch (e) {
+    if (e.name === 'AbortError') return
+    onError('Failed to connect to translation service.')
+    return
+  }
 
   if (!response.ok) {
     onError('Failed to connect to translation service.')
@@ -104,30 +113,33 @@ export async function translateDocumentStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6).trim()
-      if (data === '[DONE]') return
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') return
 
-      try {
-        const parsed = JSON.parse(data)
-        if (parsed.type === 'meta')      onMeta(parsed.data)
-        if (parsed.type === 'section')   onSection(parsed.data)
-        if (parsed.type === 'final')     onFinal(parsed.data)
-        if (parsed.type === 'error')     onError(parsed.data.message)
-        // heartbeat chunks are silently ignored
-      } catch (e) {
-        // silently ignore malformed chunks
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'meta')      onMeta(parsed.data)
+          if (parsed.type === 'section')   onSection(parsed.data)
+          if (parsed.type === 'final')     onFinal(parsed.data)
+          if (parsed.type === 'error')     onError(parsed.data.message)
+        } catch (_) {
+          // silently ignore malformed chunks
+        }
       }
     }
+  } catch (e) {
+    if (e.name !== 'AbortError') onError('Stream interrupted. Please try again.')
   }
 }
 
@@ -137,17 +149,26 @@ export async function translateFileStream(
   onMeta,
   onSection,
   onFinal,
-  onError
+  onError,
+  signal
 ) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('document_name', documentName)
 
-  const response = await fetch(`${API_BASE_URL}/api/translate-file-stream-new`, {
-    method: 'POST',
-    body: formData,
-    // No Content-Type header — browser sets it automatically with the correct boundary
-  })
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/translate-file-stream-new`, {
+      method: 'POST',
+      body: formData,
+      signal
+      // No Content-Type header — browser sets it automatically with the correct boundary
+    })
+  } catch (e) {
+    if (e.name === 'AbortError') return
+    onError('Failed to connect to translation service.')
+    return
+  }
 
   if (!response.ok) {
     onError('Failed to connect to translation service.')
@@ -158,30 +179,33 @@ export async function translateFileStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6).trim()
-      if (data === '[DONE]') return
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') return
 
-      try {
-        const parsed = JSON.parse(data)
-        if (parsed.type === 'meta')      onMeta(parsed.data)
-        if (parsed.type === 'section')   onSection(parsed.data)
-        if (parsed.type === 'final')     onFinal(parsed.data)
-        if (parsed.type === 'error')     onError(parsed.data.message)
-        // heartbeat chunks are silently ignored
-      } catch (e) {
-        // silently ignore malformed chunks
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'meta')      onMeta(parsed.data)
+          if (parsed.type === 'section')   onSection(parsed.data)
+          if (parsed.type === 'final')     onFinal(parsed.data)
+          if (parsed.type === 'error')     onError(parsed.data.message)
+        } catch (_) {
+          // silently ignore malformed chunks
+        }
       }
     }
+  } catch (e) {
+    if (e.name !== 'AbortError') onError('Stream interrupted. Please try again.')
   }
 }
 

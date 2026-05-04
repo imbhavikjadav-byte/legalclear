@@ -10,7 +10,7 @@ const STATUS_MESSAGES = [
   "Analysing termination and renewal conditions...",
 ]
 
-export default function StreamingProgress({ isStreaming, streamingComplete, sectionsCount = 0 }) {
+export default function StreamingProgress({ isStreaming, streamingComplete, sectionsCount = 0, onStop }) {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0)
   const [progress, setProgress] = useState(0)
 
@@ -42,7 +42,7 @@ export default function StreamingProgress({ isStreaming, streamingComplete, sect
       <div className="mb-4">
         <h3 className="text-[#F8FAFC] font-semibold text-base mb-2 whitespace-nowrap">
           Analysing your document
-          <span className="inline-flex gap-1 ml-1.5 align-bottom">
+          <span className="inline-flex gap-1 ml-1.5 align-middle">
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
@@ -82,6 +82,20 @@ export default function StreamingProgress({ isStreaming, streamingComplete, sect
           <p className="text-[#94A3B8] text-xs">
             ✓ {sectionsCount} sections analysed
           </p>
+        </div>
+      )}
+
+      {onStop && (
+        <div className="mt-4">
+          <button
+            onClick={onStop}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#475569] text-[#94A3B8] hover:border-[#EF4444] hover:text-[#EF4444] text-sm transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Cancel and go back
+          </button>
         </div>
       )}
     </div>

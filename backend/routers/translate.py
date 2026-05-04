@@ -1,7 +1,7 @@
 import asyncio
 import json
 from functools import partial
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from models.request_models import TranslateRequest
 from services.claude_service import translate_document, translate_document_sse
@@ -117,13 +117,15 @@ async def translate_file_stream(
 # These use the new streaming Claude service for real-time section delivery
 
 @router.post("/translate-stream-new")
-async def translate_stream_new(request: TranslateRequest):
+async def translate_stream_new(request: TranslateRequest, req: Request):
     async def event_generator():
         try:
             async for chunk in stream_translation(
                 document_text=request.document_text,
                 document_name=request.document_name
             ):
+                if await req.is_disconnected():
+                    break
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(exc)}})}\n\n"
@@ -144,6 +146,7 @@ async def translate_stream_new(request: TranslateRequest):
 
 @router.post("/translate-file-stream-new")
 async def translate_file_stream_new(
+    req: Request,
     file: UploadFile = File(...),
     document_name: str = Form(...),
 ):
@@ -165,6 +168,8 @@ async def translate_file_stream_new(
                 document_text=text,
                 document_name=document_name
             ):
+                if await req.is_disconnected():
+                    break
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(exc)}})}\n\n"
