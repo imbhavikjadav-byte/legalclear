@@ -1,10 +1,13 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import threading
 import anthropic
 from anthropic import APIStatusError, APITimeoutError, APIConnectionError
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are LegalClear, an expert legal document analyser. Your role is to translate legal documents into plain English that any adult can understand, and to clearly identify risks and obligations for the person who is being asked to agree to the document (referred to as "the user").
 
@@ -78,9 +81,12 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-# Claude Sonnet 4.5 hard limits
+# Document/chunking helpers for large inputs
 _MAX_OUTPUT_TOKENS = 8192   # model's actual output token ceiling
 _SDK_TIMEOUT      = 1800.0  # 30 minutes — httpx connect/read timeout passed to SDK
+_MAX_CHUNK_CHARS = 28000    # chunk size for splitting large documents
+_CHUNK_OVERLAP_CHARS = 2000  # keep overlap to avoid clause cuts
+_MAX_DOCUMENT_CHARS = 800000  # safeguard for extremely large uploads
 
 _CLAUDE_API_ERROR_MESSAGE = (
     "Claude AI is unavailable right now. Please try again in a few moments."
@@ -90,12 +96,15 @@ _CLAUDE_PARSE_ERROR_MESSAGE = (
 )
 
 
-def translate_document(document_text: str, document_name: str) -> dict:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
+def _choose_overall_risk_level(levels):
+    if any(level == "HIGH" for level in levels):
+        return "HIGH"
+    if any(level == "MEDIUM" for level in levels):
+        return "MEDIUM"
+    return "LOW"
 
-    # httpx.Timeout(total, connect, read, write, pool) — all set to 30 min
+
+def _create_claude_client(api_key: str):
     sdk_timeout = anthropic.Timeout(
         timeout=_SDK_TIMEOUT,
         connect=30.0,
@@ -103,7 +112,165 @@ def translate_document(document_text: str, document_name: str) -> dict:
         write=60.0,
         pool=10.0,
     )
-    client = anthropic.Anthropic(api_key=api_key, timeout=sdk_timeout)
+    return anthropic.Anthropic(api_key=api_key, timeout=sdk_timeout)
+
+
+def _chunk_document_text(text: str) -> list[str]:
+    text = text.strip()
+    if len(text) <= _MAX_CHUNK_CHARS:
+        return [text]
+
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + _MAX_CHUNK_CHARS)
+
+        if end < len(text):
+            boundary = text.rfind("\n", start, end)
+            if boundary <= start:
+                boundary = text.rfind(" ", start, end)
+            if boundary > start:
+                end = boundary
+
+        if end == start:
+            end = min(len(text), start + _MAX_CHUNK_CHARS)
+
+        chunk = text[start:end].strip()
+        if start > 0:
+            overlap_start = max(0, start - _CHUNK_OVERLAP_CHARS)
+            chunk = text[overlap_start:end].strip()
+
+        if chunk:
+            chunks.append(chunk)
+
+        start = end
+
+    return chunks
+
+
+def _extract_parties_from_text(client, document_text: str) -> list[dict]:
+    prompt = (
+        "Extract all distinct parties named in this legal document text. "
+        "Return only a valid JSON array with objects containing name, role, and description. "
+        "If you cannot identify parties, return an empty array.\n\n"
+        "Document text:\n"
+        + document_text[:120000]
+    )
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = _extract_json(response.content[0].text)
+        if isinstance(result, list):
+            return result
+    except Exception:
+        logger.warning("Unable to extract parties from document text", exc_info=True)
+    return []
+
+
+def _analyze_chunk(client, chunk_text: str, chunk_id: int, total_chunks: int) -> dict:
+    prompt = (
+        f"This is chunk {chunk_id} of {total_chunks} from a larger legal document. "
+        "Analyse this text and return ONLY a valid JSON object with the following fields: "
+        '"summary", "sections", "overall_risk_level", "overall_risk_explanation", "total_clauses_reviewed", "high_risk_count", "medium_risk_count", "note_count". '
+        "Do not include parties, and do not include any text outside the JSON object.\n\n"
+        "Document chunk:\n"
+        + chunk_text
+    )
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=_MAX_OUTPUT_TOKENS,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = response.content[0].text
+    logger.info("Received chunk %s/%s analysis from Claude", chunk_id, total_chunks)
+    return _extract_json(raw)
+
+
+def _merge_chunk_results(chunk_results: list[dict], document_name: str) -> dict:
+    all_sections = []
+    summaries = []
+    overall_levels = []
+    total_clauses = 0
+    high_risk = 0
+    medium_risk = 0
+    note_count = 0
+    explanations = []
+
+    for result in chunk_results:
+        if not result:
+            continue
+        all_sections.extend(result.get("sections", []))
+        summary = result.get("summary")
+        if summary:
+            summaries.append(summary.strip())
+        overall_levels.append(result.get("overall_risk_level", "LOW"))
+        explanation = result.get("overall_risk_explanation", "").strip()
+        if explanation:
+            explanations.append(explanation)
+        total_clauses += int(result.get("total_clauses_reviewed", 0) or 0)
+        high_risk += int(result.get("high_risk_count", 0) or 0)
+        medium_risk += int(result.get("medium_risk_count", 0) or 0)
+        note_count += int(result.get("note_count", 0) or 0)
+
+    return {
+        "document_name": document_name,
+        "parties": [],
+        "summary": (" ".join(summaries).strip()[:800] or "Document analysed in chunks."),
+        "sections": all_sections,
+        "overall_risk_level": _choose_overall_risk_level(overall_levels),
+        "overall_risk_explanation": (
+            explanations[0]
+            if explanations
+            else "This document contains multiple risk areas and was analysed in chunks."
+        ),
+        "total_clauses_reviewed": total_clauses,
+        "high_risk_count": high_risk,
+        "medium_risk_count": medium_risk,
+        "note_count": note_count,
+    }
+
+
+def translate_document(document_text: str, document_name: str) -> dict:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
+
+    if len(document_text) > _MAX_DOCUMENT_CHARS:
+        logger.warning(
+            "Input document exceeded max allowed length (%s chars), truncating to %s chars",
+            len(document_text),
+            _MAX_DOCUMENT_CHARS,
+        )
+        document_text = document_text[:_MAX_DOCUMENT_CHARS]
+
+    client = _create_claude_client(api_key)
+
+    if len(document_text) > _MAX_CHUNK_CHARS:
+        logger.info(
+            "Large document detected (%s chars); using chunked Claude pipeline",
+            len(document_text),
+        )
+        chunks = _chunk_document_text(document_text)
+        partial_results = []
+
+        for idx, chunk in enumerate(chunks):
+            try:
+                partial_results.append(_analyze_chunk(client, chunk, idx + 1, len(chunks)))
+            except (APITimeoutError, APIConnectionError, APIStatusError):
+                raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
+            except Exception:
+                logger.exception("Chunk analysis failed")
+                raise RuntimeError(_CLAUDE_PARSE_ERROR_MESSAGE)
+
+        parties = _extract_parties_from_text(client, document_text)
+        merged = _merge_chunk_results(partial_results, document_name)
+        merged["parties"] = parties
+        return merged
 
     user_message = USER_MESSAGE_TEMPLATE.format(
         document_name=document_name,
@@ -125,18 +292,15 @@ def translate_document(document_text: str, document_name: str) -> dict:
 
     # --- Attempt 1: straightforward call ---
     raw = None
-    first_exc = None
     try:
         raw = _call()
         return _extract_json(raw)
     except (json.JSONDecodeError, ValueError):
-        # Claude responded but JSON was malformed — retry with stricter prompt
-        first_exc = None  # not a hard failure; fall through to retry
+        pass
     except (APITimeoutError, APIConnectionError, APIStatusError):
-        # Hard API failure — surface a friendly message only.
         raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
     except Exception:
-        first_exc = None  # unexpected; try once more
+        pass
 
     # --- Attempt 2: retry only for JSON parse failures or unexpected errors ---
     try:
@@ -177,7 +341,7 @@ async def translate_document_sse(document_text: str, document_name: str):
         write=60.0,
         pool=10.0,
     )
-    client = anthropic.Anthropic(api_key=api_key, timeout=sdk_timeout)
+    client = _create_claude_client(api_key)
     user_message = USER_MESSAGE_TEMPLATE.format(
         document_name=document_name,
         document_text=document_text,
@@ -188,9 +352,17 @@ async def translate_document_sse(document_text: str, document_name: str):
     queue: asyncio.Queue = asyncio.Queue()
 
     def _stream_in_thread():
-        """Runs in a daemon thread; uses the Anthropic streaming API to collect
-        the full response text, then pushes it onto the async queue."""
+        """Runs in a daemon thread to keep the async route responsive."""
         try:
+            if len(document_text) > _MAX_CHUNK_CHARS:
+                logger.info(
+                    "Large-stream document detected (%s chars); using chunked pipeline",
+                    len(document_text),
+                )
+                result = translate_document(document_text, document_name)
+                loop.call_soon_threadsafe(queue.put_nowait, ("done", json.dumps(result)))
+                return
+
             collected = ""
             with client.messages.stream(
                 model="claude-sonnet-4-5",
@@ -202,6 +374,7 @@ async def translate_document_sse(document_text: str, document_name: str):
                     collected += chunk
             loop.call_soon_threadsafe(queue.put_nowait, ("done", collected))
         except Exception:
+            logger.exception("Claude streaming thread failed")
             loop.call_soon_threadsafe(queue.put_nowait, ("error", _CLAUDE_API_ERROR_MESSAGE))
 
     thread = threading.Thread(target=_stream_in_thread, daemon=True)

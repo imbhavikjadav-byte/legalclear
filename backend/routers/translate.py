@@ -60,8 +60,6 @@ async def translate_file(
                 "message": "Your document is too short. Please provide at least 100 characters.",
             },
         )
-    if len(text) > 50000:
-        text = text[:50000]
 
     try:
         result = await _run_translate(text, document_name)
@@ -106,8 +104,6 @@ async def translate_file_stream(
                 "message": "Your document is too short. Please provide at least 100 characters.",
             },
         )
-    if len(text) > 50000:
-        text = text[:50000]
 
     return StreamingResponse(
         translate_document_sse(text, document_name),

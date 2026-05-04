@@ -9,7 +9,7 @@ ALLOWED_TYPES = {
     "application/msword": "doc",
 }
 
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 async def extract_text_from_file(file: UploadFile) -> str:

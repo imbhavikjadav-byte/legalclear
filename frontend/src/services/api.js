@@ -36,8 +36,8 @@ async function _readSSEStream(response) {
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
-    // SSE events are separated by double newlines
-    const parts = buffer.split('\n\n')
+    // SSE events may use LF or CRLF delimiters.
+    const parts = buffer.split(/\r?\n\r?\n/)
     buffer = parts.pop() // keep any incomplete trailing chunk
 
     for (const part of parts) {
