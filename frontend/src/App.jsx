@@ -68,7 +68,7 @@ export default function App() {
       />
       <Navbar />
 
-      <main className="flex-1 pt-16">
+      <main className="flex-1 pt-16 flex flex-col">
         {!translationData && !isLoading && (
           <>
             <HeroSection />
