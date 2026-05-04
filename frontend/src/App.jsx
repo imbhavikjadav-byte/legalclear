@@ -83,7 +83,7 @@ export default function App() {
         )}
 
         {isLoading && (
-          <div className="max-w-3xl mx-auto px-4">
+          <div className="flex-1 flex items-center justify-center px-4">
             <LoadingIndicator />
           </div>
         )}
