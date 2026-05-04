@@ -177,8 +177,8 @@ export default function App() {
 
 
 
-        {isStreaming && (
-          <div className={streamingMeta ? 'px-4' : 'flex-1 flex items-center justify-center px-4'}>
+        {isStreaming && !streamingMeta && (
+          <div className="flex-1 flex items-center justify-center px-4">
             <LoadingIndicator />
           </div>
         )}

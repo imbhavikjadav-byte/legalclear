@@ -39,11 +39,22 @@ export default function StreamingProgress({ isStreaming, streamingComplete, sect
 
   return (
     <div className="bg-[#1A2F4E] border border-[#334155] rounded-2xl p-6 mb-6 mx-4 sm:mx-6 lg:mx-8">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-3 h-3 bg-[#F59E0B] rounded-full animate-pulse shrink-0"></div>
-        <h3 className="text-[#F8FAFC] font-bold text-lg">
-          {STATUS_MESSAGES[currentMessageIndex]}
+      <div className="mb-4">
+        <h3 className="text-[#F8FAFC] font-semibold text-base mb-2 whitespace-nowrap">
+          Analysing your document
+          <span className="inline-flex gap-1 ml-1.5 align-bottom">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="inline-block w-1 h-1 rounded-full bg-[#F59E0B] animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </span>
         </h3>
+        <p className="text-[#94A3B8] text-sm">
+          {STATUS_MESSAGES[currentMessageIndex]}
+        </p>
       </div>
 
       <div className="mb-4">

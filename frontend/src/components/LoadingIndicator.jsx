@@ -11,10 +11,10 @@ export default function LoadingIndicator() {
       </div>
       <div className="text-center">
         <p className="text-[#F8FAFC] font-semibold text-lg animate-pulse">
-          Analysing your document…
+          Uploading your file and connecting to the server…
         </p>
         <p className="text-[#94A3B8] text-sm mt-1">
-          This may take a few seconds to minutes based on the size of document
+          Preparing your document for analysis and waiting for the server to begin streaming.
         </p>
       </div>
       <div className="flex gap-1.5">
