@@ -78,7 +78,7 @@ async def extract_text_from_file(file: UploadFile) -> str:
                     detail={
                         "error": True,
                         "code": "FILE_EXTRACTION_ERROR",
-                        "message": "We couldn't extract text from this PDF. It may be a scanned document where pages are saved as images rather than text. Please try: (1) copying and pasting the text directly into the text box, or (2) using a PDF with a text layer.",
+                        "message": "We couldn't extract text from this PDF. It may be a scanned document where pages are saved as images rather than text. Please try copying and pasting the text directly into the text box, or using a PDF with a text layer.",
                     },
                 )
             return extracted

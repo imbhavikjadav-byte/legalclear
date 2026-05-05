@@ -1,12 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from "react"
-import { Toaster } from "react-hot-toast"
-import toast from "react-hot-toast"
 import Navbar from "./components/Navbar"
 import HeroSection from "./components/HeroSection"
 import InputPanel from "./components/InputPanel"
 import ResultsPanel from "./components/ResultsPanel"
 import LoadingIndicator from "./components/LoadingIndicator"
 import Footer from "./components/Footer"
+import Modal from "./components/Modal"
+import { useModal } from "./hooks/useModal"
 import { translateDocumentStream, translateFileStream, generatePdf, sendEmail, checkTestMode } from "./services/api"
 import { getErrorMessage } from "./utils/formatters"
 
@@ -24,6 +24,7 @@ export default function App() {
   const [forcedOpenSectionIds, setForcedOpenSectionIds] = useState([])
   const [isTestMode, setIsTestMode] = useState(false)
   const [isCached, setIsCached] = useState(false)
+  const { showModal, hideModal, modalState } = useModal()
 
   // Assemble complete result for PDF/email when streaming is done
   const assembledResult = useMemo(() => {
@@ -94,7 +95,7 @@ export default function App() {
       (error) => {
         setStreamError(error)
         setIsStreaming(false)
-        toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
+        showModal({ type: 'error', message: getErrorMessage(new Error(error)) })
       },
       abortControllerRef.current.signal,
       // onCached
@@ -133,7 +134,7 @@ export default function App() {
       (error) => {
         setStreamError(error)
         setIsStreaming(false)
-        toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
+        showModal({ type: 'error', message: getErrorMessage(new Error(error)) })
       },
       abortControllerRef.current.signal,
       // onCached
@@ -153,9 +154,9 @@ export default function App() {
       a.download = `LegalClear-${userDocumentName.replace(/\s+/g, '-')}.pdf`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('PDF downloaded successfully!')
+      showModal({ type: 'success', message: 'PDF downloaded successfully!' })
     } catch (err) {
-      toast.error(getErrorMessage(err), { duration: 10000 })
+      showModal({ type: 'error', message: getErrorMessage(err) })
     }
   }
 
@@ -164,9 +165,9 @@ export default function App() {
 
     try {
       await sendEmail(email, assembledResult, userDocumentName, originalFilename)
-      toast.success(`Report sent to ${email}!`)
+      showModal({ type: 'success', message: `Report sent to ${email}!` })
     } catch (err) {
-      toast.error(getErrorMessage(err), { duration: 10000 })
+      showModal({ type: 'error', message: getErrorMessage(err) })
     }
   }
 
@@ -182,17 +183,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0F1A2E] flex flex-col">
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: "#1A2F4E",
-            color: "#F8FAFC",
-            border: "1px solid #334155",
-          },
-          success: { iconTheme: { primary: "#10B981", secondary: "#1A2F4E" } },
-          error: { iconTheme: { primary: "#EF4444", secondary: "#1A2F4E" } },
-        }}
+      <Modal
+        isOpen={modalState.isOpen}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        onClose={hideModal}
       />
       <Navbar centered={streamingComplete} />
 
@@ -234,6 +230,7 @@ export default function App() {
             onDownloadPdf={handleDownloadPdf}
             onSendEmail={handleSendEmail}
             isCached={isCached}
+            showModal={showModal}
           />
         )}
       </main>

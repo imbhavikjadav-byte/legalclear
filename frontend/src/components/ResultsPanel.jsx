@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import toast from 'react-hot-toast'
 import SummaryCard from './SummaryCard'
 import SectionAccordion from './SectionAccordion'
 import RiskSummary from './RiskSummary'
@@ -25,7 +24,8 @@ export default function ResultsPanel({
   onStop,
   onDownloadPdf,
   onSendEmail,
-  isCached
+  isCached,
+  showModal
 }) {
   // Support both legacy and streaming modes
   const isStreaming = streamingMeta !== undefined
@@ -74,9 +74,9 @@ export default function ResultsPanel({
       a.download = `LegalClear-${pdfName.replace(/\s+/g, '-')}.pdf`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('PDF downloaded successfully!')
+      showModal && showModal({ type: 'success', message: 'PDF downloaded successfully!' })
     } catch (err) {
-      toast.error(getErrorMessage(err), { duration: 10000 })
+      showModal && showModal({ type: 'error', message: getErrorMessage(err) })
     } finally {
       setIsGeneratingPdf(false)
     }
@@ -92,10 +92,10 @@ export default function ResultsPanel({
     setIsSending(true)
     try {
       await sendEmail(email, currentData, pdfName, originalFilename)
-      toast.success(`Report sent to ${email}!`)
+      showModal && showModal({ type: 'success', message: `Report sent to ${email}!` })
       setShowEmailModal(false)
     } catch (err) {
-      toast.error(getErrorMessage(err), { duration: 10000 })
+      showModal && showModal({ type: 'error', message: getErrorMessage(err) })
     } finally {
       setIsSending(false)
     }
@@ -107,7 +107,7 @@ export default function ResultsPanel({
       .join('\n\n')
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
-      toast.success('Translation copied to clipboard!')
+      showModal && showModal({ type: 'success', message: 'Translation copied to clipboard!' })
       setTimeout(() => setCopied(false), 2000)
     })
   }
