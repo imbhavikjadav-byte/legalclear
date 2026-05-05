@@ -1,4 +1,6 @@
+import logging
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +11,14 @@ from fastapi.responses import JSONResponse
 from routers import translate, pdf, email_router
 
 app = FastAPI(title="LegalClear API", version="1.0.0")
+
+_startup_time = datetime.now()
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("legalclear").info(
+    "LegalClear backend starting — %s",
+    _startup_time.strftime("%Y-%m-%d %H:%M:%S"),
+)
+
 
 _frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
@@ -38,7 +48,23 @@ app.include_router(email_router.router, prefix="/api")
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "LegalClear API"}
+    from utils.test_mode import is_test_mode
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "service": "LegalClear API",
+            "test_mode": is_test_mode(),
+            "started_at": _startup_time.strftime("%Y-%m-%d %H:%M:%S"),
+        },
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
+@app.get("/api/test-mode")
+async def test_mode_status():
+    from utils.test_mode import is_test_mode
+    return {"test_mode": is_test_mode()}
 
 
 @app.exception_handler(Exception)

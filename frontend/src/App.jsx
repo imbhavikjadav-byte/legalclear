@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Toaster } from "react-hot-toast"
 import toast from "react-hot-toast"
 import Navbar from "./components/Navbar"
@@ -7,7 +7,7 @@ import InputPanel from "./components/InputPanel"
 import ResultsPanel from "./components/ResultsPanel"
 import LoadingIndicator from "./components/LoadingIndicator"
 import Footer from "./components/Footer"
-import { translateDocumentStream, translateFileStream, generatePdf, sendEmail } from "./services/api"
+import { translateDocumentStream, translateFileStream, generatePdf, sendEmail, checkTestMode } from "./services/api"
 import { getErrorMessage } from "./utils/formatters"
 
 export default function App() {
@@ -21,13 +21,16 @@ export default function App() {
   const [streamError, setStreamError] = useState(null)
   const [originalFilename, setOriginalFilename] = useState(null)
   const [userDocumentName, setUserDocumentName] = useState(null)
+  const [forcedOpenSectionIds, setForcedOpenSectionIds] = useState([])
+  const [isTestMode, setIsTestMode] = useState(false)
 
   // Assemble complete result for PDF/email when streaming is done
   const assembledResult = useMemo(() => {
     if (!streamingComplete || !streamingMeta || !streamingFinal) return null
     return {
       document_name: streamingMeta.document_name,
-      parties: streamingMeta.parties,
+      verdict: streamingMeta.verdict,
+      parties: streamingMeta.parties ?? [],
       summary: streamingMeta.summary,
       sections: streamingSections,
       overall_risk_level: streamingFinal.overall_risk_level,
@@ -38,6 +41,10 @@ export default function App() {
       note_count: streamingFinal.note_count
     }
   }, [streamingComplete, streamingMeta, streamingSections, streamingFinal])
+
+  useEffect(() => {
+    checkTestMode().then(setIsTestMode)
+  }, [])
 
   function handleStop() {
     if (abortControllerRef.current) {
@@ -190,6 +197,7 @@ export default function App() {
                 onTranslate={handleTranslate}
                 onTranslateFile={handleTranslateFile}
                 isLoading={isStreaming}
+                isTestMode={isTestMode}
               />
             </div>
           </div>
@@ -211,6 +219,8 @@ export default function App() {
             streamingComplete={streamingComplete}
             documentName={userDocumentName || streamingMeta.document_name}
             originalFilename={originalFilename}
+            forcedOpenSectionIds={forcedOpenSectionIds}
+            setForcedOpenSectionIds={setForcedOpenSectionIds}
             onReset={handleReset}
             onStop={handleStop}
             onDownloadPdf={handleDownloadPdf}

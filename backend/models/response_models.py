@@ -25,6 +25,7 @@ class Party(BaseModel):
 
 class TranslationResponse(BaseModel):
     document_name: str
+    verdict: str
     parties: List[Party] = []
     summary: str
     sections: List[Section] = []

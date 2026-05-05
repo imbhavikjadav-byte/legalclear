@@ -6,55 +6,92 @@ import re
 import threading
 import anthropic
 from anthropic import APIStatusError, APITimeoutError, APIConnectionError
+from utils.test_mode import get_test_pdf_text, generate_test_mock_response, is_test_mode
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are LegalClear, an expert legal document analyser. Your role is to translate legal documents into plain English that any adult can understand, and to clearly identify risks and obligations for the person who is being asked to agree to the document (referred to as "the user").
 
-You must follow these rules without exception:
+SYSTEM_PROMPT = """You are LegalClear, an expert legal document analyser.
 
-1. Read the ENTIRE document before producing any output.
-2. Identify all parties and define them clearly at the start.
-3. Categorise every clause or section you find.
-4. Translate every clause into plain English — what it means in practice for the user.
-5. Flag risks accurately using the severity system: HIGH RISK (red), MEDIUM RISK (amber), NOTE (blue).
-6. Never soften the language around genuinely harmful clauses.
-7. Flag all ambiguous language as a risk — vagueness in a legal document always favours the drafter.
-8. Always flag: arbitration clauses, data selling/sharing, automatic renewal, unilateral modification rights, liability waivers, and jurisdiction clauses.
-9. Cross-reference dependent clauses — never translate a clause in isolation if it depends on or is modified by another clause.
-10. Do not provide legal advice. Do not tell the user whether to sign. Do translate and flag accurately.
-11. Approach every document with the assumption it may contain unfair terms.
-12. Be concise in every field: plain_english should be 2-4 sentences max; risk flag explanations 1-2 sentences max. Prioritise clarity over exhaustiveness.
-13. Group closely related sub-clauses into a single section rather than splitting into many tiny sections. Aim for 8-20 sections total regardless of document length.
+Your role is to translate legal documents into plain English and identify risks
+for the person being asked to agree to the document (referred to as "the user").
 
-You must return your response ONLY as a valid JSON object — no preamble, no explanation outside the JSON, no markdown code fences. The JSON must conform exactly to the schema provided in the user message."""
+CRITICAL STREAMING INSTRUCTION:
+You must output your analysis section by section.
+For each section you find, output a complete JSON object on its own line,
+wrapped in <section> tags like this:
+
+<section>{"section_id": 1, "title": "...", "category": "...", "original_excerpt": "...", "plain_english": "...", "risk_flags": [{"severity": "HIGH", "title": "short flag title", "explanation": "what this risk means for the user"}]}</section>
+
+Each risk_flag MUST have exactly these three fields: severity (HIGH|MEDIUM|NOTE), title (short label), explanation (1-2 sentences).
+
+Before the first section, output document metadata wrapped in <meta> tags:
+<meta>{"document_name": "...", "parties": [...], "summary": "..."}</meta>
+
+After ALL sections, output a final summary wrapped in <final> tags:
+<final>{"overall_risk_level": "LOW|MEDIUM|HIGH", "overall_risk_explanation": "...", "total_clauses_reviewed": 0, "high_risk_count": 0, "medium_risk_count": 0, "note_count": 0}</final>
+
+RULES:
+1. Read the ENTIRE document before outputting anything
+2. Output <meta> first, then each <section>, then <final>
+3. Every section JSON must be complete and valid — never break a section across lines
+4. Identify all parties and define them clearly in the meta block
+5. Categorise every clause: Your Rights | Company Rights | Your Obligations |
+   Company Obligations | Termination | Liability & Disputes | Data & Privacy |
+   Payment & Fees | Intellectual Property | Other
+6. Risk flag severity: HIGH | MEDIUM | NOTE
+7. Never soften language around genuinely harmful clauses
+8. Always flag: arbitration, data selling, auto-renewal, unilateral modification,
+   data selling, liability waivers, jurisdiction clauses
+9. Cross-reference dependent clauses — never translate a clause in isolation if it depends
+   on or is modified by another clause
+10. Do not provide legal advice
+11. Approach every document with the assumption it may contain unfair terms
+
+OUTPUT BREVITY RULES — these are strict and must be followed exactly:
+- verdict: EXACTLY 1 sentence, maximum 20 words. This is the single most important
+  thing a user needs to know about this document. Make it direct and honest.
+  Example: "This document gives the company broad rights over your data and heavily
+  limits your ability to dispute charges."
+- summary: EXACTLY 1 sentence, maximum 25 words. State what the document is and
+  what it governs. No risk language here — just what the document covers.
+- overall_risk_explanation: EXACTLY 1 sentence, maximum 20 words. State why the
+  document received this risk level.
+- plain_english (per section): Maximum 3 sentences. State what the clause does,
+  who it affects, and what the practical implication is for the user. No padding.
+- risk flag explanation: Maximum 15 words. Be direct. No padding or softening.
+  Example: "Company can change prices at any time without your consent."
+
+You must return your response ONLY as a valid JSON object — no preamble,
+no explanation outside the JSON, no markdown code fences."""
 
 USER_MESSAGE_TEMPLATE = """Analyse the following legal document and return a JSON object conforming to this exact schema:
 
 {{
   "document_name": "string — name of the document as provided by the user",
+  "verdict": "string — EXACTLY 1 sentence, max 20 words. The single most important thing the user needs to know about this document. Direct and honest.",
   "parties": [
     {{ "name": "string", "role": "string — e.g. user/customer/tenant/employee", "description": "string" }}
   ],
-  "summary": "string — 2-3 sentence plain-English overview of what this document is and what it does",
+  "summary": "string — EXACTLY 1 sentence, maximum 25 words. State what the document is and what it governs. No risk language here — just what the document covers.",
   "sections": [
     {{
       "section_id": "integer",
       "title": "string — clear descriptive title for this clause or section",
       "category": "one of: Your Rights | Company Rights | Your Obligations | Company Obligations | Termination | Liability & Disputes | Data & Privacy | Payment & Fees | Intellectual Property | Other",
       "original_excerpt": "string — the key original legal text this section is based on (max 300 chars, truncate with ellipsis if longer)",
-      "plain_english": "string — full plain-English explanation of what this clause means in practice for the user",
+      "plain_english": "string — Maximum 3 sentences. State what the clause does, who it affects, and what the practical implication is for the user. No padding.",
       "risk_flags": [
         {{
           "severity": "HIGH | MEDIUM | NOTE",
           "title": "string — short flag title",
-          "explanation": "string — what this risk means for the user specifically"
+          "explanation": "string — Maximum 15 words. Be direct. No padding or softening."
         }}
       ]
     }}
   ],
   "overall_risk_level": "LOW | MEDIUM | HIGH — overall risk assessment of the entire document",
-  "overall_risk_explanation": "string — 1-2 sentence explanation of the overall risk rating",
+  "overall_risk_explanation": "string — EXACTLY 1 sentence, maximum 20 words. State why the document received this risk level.",
   "total_clauses_reviewed": "integer",
   "high_risk_count": "integer",
   "medium_risk_count": "integer",
@@ -285,6 +322,11 @@ def _merge_chunk_results(chunk_results: list[dict], document_name: str) -> dict:
 
 
 def translate_document(document_text: str, document_name: str) -> dict:
+    # Check if test mode is enabled
+    if is_test_mode():
+        pdf_text = get_test_pdf_text()
+        return generate_test_mock_response(document_name, pdf_text)
+
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError(_CLAUDE_API_ERROR_MESSAGE)
@@ -378,6 +420,13 @@ async def translate_document_sse(document_text: str, document_name: str):
       buffer and never reach the client until the whole response is ready,
       defeating the purpose entirely.
     """
+    if is_test_mode():
+        pdf_text = get_test_pdf_text()
+        result = generate_test_mock_response(document_name, pdf_text)
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Analysing your document...'})}\n\n"
+        yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+        return
+
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         yield f"data: {json.dumps({'type': 'error', 'message': _CLAUDE_API_ERROR_MESSAGE})}\n\n"

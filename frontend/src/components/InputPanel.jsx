@@ -6,7 +6,7 @@ import { formatNumber } from '../utils/formatters'
 const MAX_CHARS = 50000
 const MIN_CHARS = 100
 
-export default function InputPanel({ onTranslate, onTranslateFile, isLoading }) {
+export default function InputPanel({ onTranslate, onTranslateFile, isLoading, isTestMode = false }) {
   const [documentText, setDocumentText] = useState('')
   const [documentName, setDocumentName] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -57,7 +57,15 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading }) 
   return (
     <div className="bg-[#1A2F4E] border border-[#334155] rounded-2xl p-6 shadow-2xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-[#F8FAFC] font-semibold text-lg">Translate Document</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-[#F8FAFC] font-semibold text-lg">Translate Document</h2>
+          {isTestMode && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] animate-pulse" />
+              Test Mode
+            </span>
+          )}
+        </div>
         {(documentText || documentName || selectedFile) && (
           <button
             onClick={handleClear}

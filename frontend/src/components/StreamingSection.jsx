@@ -14,7 +14,7 @@ const CATEGORY_COLOURS = {
   'Other': 'bg-[#64748B] text-white',
 }
 
-export default function StreamingSection({ section, index, isLast = false }) {
+export default function StreamingSection({ section, index, isLast = false, forcedOpenSectionIds = [] }) {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -27,6 +27,7 @@ export default function StreamingSection({ section, index, isLast = false }) {
 
   return (
     <div
+      id={`section-${section.section_id}`}
       className={`transform transition-all duration-500 ease-out ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
       }`}

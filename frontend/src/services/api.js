@@ -239,4 +239,14 @@ export async function sendEmail(email, translationData, documentName, originalFi
   return response.data
 }
 
+export async function checkTestMode() {
+  try {
+    const response = await api.get('/api/test-mode')
+    return response.data.test_mode
+  } catch (error) {
+    console.warn('Failed to check test mode status:', error)
+    return false
+  }
+}
+
 export default api

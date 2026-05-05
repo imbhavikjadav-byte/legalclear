@@ -1,3 +1,4 @@
+import html
 import io
 from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
@@ -204,6 +205,11 @@ RISK_LEVEL_COLOURS = {
 }
 
 
+def _esc(text: str) -> str:
+    """Escape HTML/XML special characters for safe use in ReportLab Paragraph."""
+    return html.escape(str(text) if text is not None else "")
+
+
 class _NumberedCanvas:
     """Mixin for page numbering — handled via onFirstPage/onLaterPages."""
     pass
@@ -255,7 +261,7 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
         [Paragraph("Legal Document Plain-English Translation Report",   # row 1
                    styles["cover_sub"])],
         # Adaptive font size: use smaller style for long names to prevent overflow
-        [Paragraph(document_name,
+        [Paragraph(_esc(document_name),
                    styles["cover_doc_name"] if len(document_name) <= 40
                    else styles["cover_doc_name_small"])],                # row 2
         [Paragraph(f"Translated on: {date_str} at {time_str}",          # row 3
@@ -271,7 +277,7 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
     # If the user uploaded a file, insert an "Original Document" row before the disclaimer
     if original_filename:
         cover_bg_data.insert(4, [Paragraph(
-            f"Original Document: {original_filename}",
+            f"Original Document: {_esc(original_filename)}",
             styles["cover_meta"],
         )])
 
@@ -303,14 +309,73 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
     story.append(cover_table)
     story.append(PageBreak())
 
-    # ── EXECUTIVE SUMMARY ─────────────────────────────────────────────────────
-    story.append(Paragraph("Executive Summary", styles["page_heading"]))
+    # ── QUICK VERDICT ─────────────────────────────────────────────────────
+    story.append(Paragraph("Quick Verdict", styles["page_heading"]))
     story.append(HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=10))
 
-    # Summary text
-    story.append(Paragraph("<b>Document Summary</b>", styles["section_heading"]))
-    story.append(Paragraph(translation_data.get("summary", ""), styles["body_text"]))
-    story.append(Spacer(1, 8))
+    # Verdict
+    verdict = translation_data.get("verdict", "")
+    if verdict:
+        story.append(Paragraph("<b>Quick Verdict</b>", styles["section_heading"]))
+        story.append(Paragraph(_esc(verdict), styles["body_text"]))
+        story.append(Spacer(1, 8))
+
+    # Overall Risk Level
+    overall = translation_data.get("overall_risk_level", "LOW")
+    overall_colour = RISK_LEVEL_COLOURS.get(overall, SUCCESS_GREEN)
+    story.append(Paragraph("<b>Overall Risk Level</b>", styles["section_heading"]))
+    story.append(Spacer(1, 4))
+    risk_data = [
+        [Paragraph(f"<b>{overall}</b>", styles["body_text"])],
+    ]
+    rt = Table(risk_data, colWidths=[usable_w])
+    rt.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), overall_colour),
+                ("TEXTCOLOR", (0, 0), (-1, -1), WHITE),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(rt)
+    story.append(Spacer(1, 6))
+    story.append(
+        Paragraph(_esc(translation_data.get("overall_risk_explanation", "")), styles["body_text"])
+    )
+    story.append(Spacer(1, 10))
+
+    # Stats
+    story.append(Paragraph("<b>Analysis Statistics</b>", styles["section_heading"]))
+    story.append(Spacer(1, 4))
+    stats_data = [
+        [
+            Paragraph("<b>Metric</b>", styles["table_header_text"]),
+            Paragraph("<b>Value</b>", styles["table_header_text"]),
+        ],
+        ["Total Sections Reviewed", str(translation_data.get("total_clauses_reviewed", 0))],
+        ["High Risk Flags", str(translation_data.get("high_risk_count", 0))],
+        ["Medium Risk Flags", str(translation_data.get("medium_risk_count", 0))],
+        ["Notes", str(translation_data.get("note_count", 0))],
+    ]
+    st = Table(stats_data, colWidths=[100 * mm, usable_w - 100 * mm])
+    st.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), MID_NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
+                ("GRID", (0, 0), (-1, -1), 0.5, GREY_LINE),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, colors.HexColor("#F8FAFC")]),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(st)
+    story.append(Spacer(1, 10))
 
     # Parties table
     parties = translation_data.get("parties", [])
@@ -325,12 +390,14 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             ]
         ]
         for p in parties:
+            if not isinstance(p, dict):
+                continue
             description = p.get("description") or p.get("role", "")
             party_table_data.append(
                 [
-                    Paragraph(str(p.get("name", "")), styles["body_text"]),
-                    Paragraph(str(p.get("role", "")), styles["body_text"]),
-                    Paragraph(str(description), styles["body_text"]),
+                    Paragraph(_esc(p.get("name", "")), styles["body_text"]),
+                    Paragraph(_esc(p.get("role", "").capitalize()), styles["body_text"]),
+                    Paragraph(_esc(description), styles["body_text"]),
                 ]
             )
         pt = Table(party_table_data, colWidths=[40 * mm, 40 * mm, usable_w - 80 * mm])
@@ -349,50 +416,10 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             )
         )
         story.append(pt)
-        story.append(Spacer(1, 10))
-
-    # Stats
-    story.append(Paragraph("<b>Analysis Statistics</b>", styles["section_heading"]))
-    story.append(Spacer(1, 4))
-    overall = translation_data.get("overall_risk_level", "LOW")
-    overall_colour = RISK_LEVEL_COLOURS.get(overall, SUCCESS_GREEN)
-    stats_data = [
-        [
-            Paragraph("<b>Metric</b>", styles["table_header_text"]),
-            Paragraph("<b>Value</b>", styles["table_header_text"]),
-        ],
-        ["Total Sections Reviewed", str(translation_data.get("total_clauses_reviewed", 0))],
-        ["High Risk Flags", str(translation_data.get("high_risk_count", 0))],
-        ["Medium Risk Flags", str(translation_data.get("medium_risk_count", 0))],
-        ["Notes", str(translation_data.get("note_count", 0))],
-        ["Overall Risk Level", overall],
-    ]
-    st = Table(stats_data, colWidths=[100 * mm, usable_w - 100 * mm])
-    st.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), MID_NAVY),
-                ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-                ("GRID", (0, 0), (-1, -1), 0.5, GREY_LINE),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, colors.HexColor("#F8FAFC")]),
-                ("BACKGROUND", (1, -1), (1, -1), overall_colour),
-                ("TEXTCOLOR", (1, -1), (1, -1), WHITE),
-                ("FONTNAME", (1, -1), (1, -1), "Helvetica-Bold"),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
-    story.append(st)
-    story.append(Spacer(1, 6))
-    story.append(
-        Paragraph(translation_data.get("overall_risk_explanation", ""), styles["body_text"])
-    )
     story.append(PageBreak())
 
-    # ── RISK SUMMARY ─────────────────────────────────────────────────────────
-    story.append(Paragraph("Risk Summary", styles["page_heading"]))
+    # ── WHAT TO WATCH OUT FOR ──────────────────────────────────────────────
+    story.append(Paragraph("What to Watch Out For", styles["page_heading"]))
     story.append(HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=10))
 
     sections = translation_data.get("sections", [])
@@ -402,14 +429,12 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             if isinstance(flag, dict):
                 all_flags.append((sec.get("title", ""), flag))
 
-    for severity_label, display_label in [("HIGH", "🔴 High Risk"), ("MEDIUM", "🟡 Medium Risk"), ("NOTE", "🔵 Notes")]:
-        flags_for_level = [(t, f) for (t, f) in all_flags if f.get("severity") == severity_label]
-        if not flags_for_level:
-            continue
-        display_text = {"HIGH": "HIGH RISK", "MEDIUM": "MEDIUM RISK", "NOTE": "NOTES"}.get(severity_label, display_label)
-        story.append(Paragraph(f"<b>{display_text}</b>", styles["section_heading"]))
-        bg_col, border_col, _ = SEVERITY_COLOURS.get(severity_label, (NOTE_BG, NOTE_BORDER, ""))
-        for section_title, flag in flags_for_level:
+    high_flags = [(t, f) for (t, f) in all_flags if f.get("severity") == "HIGH"][:5]  # Max 5 HIGH risks
+
+    if not high_flags:
+        story.append(Paragraph("No high-risk issues were identified in this document.", styles["body_text"]))
+    else:
+        for section_title, flag in high_flags:
             if not isinstance(flag, dict):
                 continue
             flag_title = str(flag.get("title") or flag.get("name") or "")
@@ -417,28 +442,27 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             flag_data = [
                 [
                     Paragraph(
-                        f"<b>{flag_title}</b> <font color='#64748B'>(from: {section_title})</font>",
+                        f"<b>{_esc(flag_title)}</b> <font color='#64748B'>(from: {_esc(section_title)})</font>",
                         styles["risk_title"],
                     )
                 ],
-                [Paragraph(flag_explanation, styles["risk_body"])],
+                [Paragraph(_esc(flag_explanation), styles["risk_body"])],
             ]
             ft = Table(flag_data, colWidths=[usable_w - 10])
             ft.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, -1), bg_col),
+                        ("BACKGROUND", (0, 0), (-1, -1), HIGH_RISK_BG),
                         ("LEFTPADDING", (0, 0), (-1, -1), 8),
                         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                         ("TOPPADDING", (0, 0), (-1, -1), 5),
                         ("BOTTOMPADDING", (0, -1), (-1, -1), 5),
-                        ("LINEBEFORE", (0, 0), (0, -1), 3, border_col),
+                        ("LINEBEFORE", (0, 0), (0, -1), 3, HIGH_RISK_BORDER),
                     ]
                 )
             )
             story.append(ft)
             story.append(Spacer(1, 4))
-        story.append(Spacer(1, 6))
 
     story.append(PageBreak())
 
@@ -457,7 +481,7 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
         header_data = [
             [
                 Paragraph(
-                    f"<b>§{section_id} — {title}</b>",
+                    f"<b>§{section_id} — {_esc(title)}</b>",
                     styles["section_heading"],
                 ),
                 Paragraph(
@@ -491,12 +515,12 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
         excerpt = sec.get("original_excerpt", "")
         if excerpt:
             section_elements.append(
-                Paragraph(f'<i>"{excerpt}"</i>', styles["excerpt_text"])
+                Paragraph(f'<i>"{_esc(excerpt)}"</i>', styles["excerpt_text"])
             )
 
         # Plain English
         section_elements.append(
-            Paragraph(sec.get("plain_english", ""), styles["body_text"])
+            Paragraph(_esc(sec.get("plain_english", "")), styles["body_text"])
         )
 
         # Risk flags
@@ -514,11 +538,11 @@ def generate_pdf(translation_data: dict, document_name: str, original_filename: 
             flag_data = [
                 [
                     Paragraph(
-                        f"<b>{sev_label}: {flag_title}</b>",
+                        f"<b>{_esc(sev_label)}: {_esc(flag_title)}</b>",
                         styles["risk_title"],
                     )
                 ],
-                [Paragraph(flag_explanation, styles["risk_body"])],
+                [Paragraph(_esc(flag_explanation), styles["risk_body"])],
             ]
             ft = Table(flag_data, colWidths=[usable_w - 10])
             ft.setStyle(

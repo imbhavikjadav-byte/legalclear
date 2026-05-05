@@ -5,11 +5,46 @@ import re
 from typing import AsyncGenerator
 import anthropic
 from anthropic import APIStatusError, APITimeoutError, APIConnectionError
+from utils.test_mode import get_test_pdf_text, generate_test_mock_response, is_test_mode
 
 _SDK_TIMEOUT = 1800.0
 _CLAUDE_API_ERROR_MESSAGE = (
     "Claude AI is unavailable right now. Please try again in a few moments."
 )
+
+
+async def _mock_stream_response(document_name: str) -> AsyncGenerator[dict, None]:
+    """Generate mock streaming response for testing."""
+    mock_data = generate_test_mock_response(document_name, get_test_pdf_text())
+
+    # Yield meta first
+    yield {"type": "meta", "data": {
+        "document_name": mock_data["document_name"],
+        "verdict": mock_data["verdict"],
+        "parties": mock_data["parties"],
+        "summary": mock_data["summary"]
+    }}
+
+    # Yield heartbeat
+    yield {"type": "heartbeat", "data": {}}
+
+    # Yield sections with delays
+    for section in mock_data["sections"]:
+        await asyncio.sleep(1.5)  # Simulate processing time
+        yield {"type": "section", "data": section}
+        yield {"type": "heartbeat", "data": {}}
+
+    # Yield final
+    await asyncio.sleep(1.0)
+    yield {"type": "final", "data": {
+        "overall_risk_level": mock_data["overall_risk_level"],
+        "overall_risk_explanation": mock_data["overall_risk_explanation"],
+        "total_clauses_reviewed": mock_data["total_clauses_reviewed"],
+        "high_risk_count": mock_data["high_risk_count"],
+        "medium_risk_count": mock_data["medium_risk_count"],
+        "note_count": mock_data["note_count"]
+    }}
+
 
 SYSTEM_PROMPT = """You are LegalClear, an expert legal document analyser.
 
@@ -26,7 +61,9 @@ wrapped in <section> tags like this:
 Each risk_flag MUST have exactly these three fields: severity (HIGH|MEDIUM|NOTE), title (short label), explanation (1-2 sentences).
 
 Before the first section, output document metadata wrapped in <meta> tags:
-<meta>{"document_name": "...", "parties": [{"name": "string", "role": "string — e.g. user/customer/tenant/employee", "description": "string — one sentence about this party"}], "summary": "..."}</meta>
+<meta>{"document_name": "...", "verdict": "...", "parties": [{"name": "Party Name", "role": "user|company|landlord|employee|etc", "description": "what this party is in the context of this document"}], "summary": "..."}</meta>
+
+The parties array MUST be populated. Identify EVERY named party in the document (company, individual, organisation). Each party must have name, role and description.
 
 After ALL sections, output a final summary wrapped in <final> tags:
 <final>{"overall_risk_level": "LOW|MEDIUM|HIGH", "overall_risk_explanation": "...", "total_clauses_reviewed": 0, "high_risk_count": 0, "medium_risk_count": 0, "note_count": 0}</final>
@@ -41,11 +78,30 @@ RULES:
    Payment & Fees | Intellectual Property | Other
 6. Risk flag severity: HIGH | MEDIUM | NOTE
 7. Never soften language around genuinely harmful clauses
-8. Flag all ambiguous language as risk
-9. Always flag: arbitration, data selling, auto-renewal, unilateral modification,
+8. Always flag: arbitration, data selling, auto-renewal, unilateral modification,
    liability waivers, jurisdiction clauses
+9. Cross-reference dependent clauses — never translate a clause in isolation if it depends
+   on or is modified by another clause
 10. Do not provide legal advice
-"""
+11. Approach every document with the assumption it may contain unfair terms
+
+OUTPUT BREVITY RULES — these are strict and must be followed exactly:
+- verdict: EXACTLY 1 sentence, maximum 20 words. This is the single most important
+  thing a user needs to know about this document. Make it direct and honest.
+  Example: "This document gives the company broad rights over your data and heavily
+  limits your ability to dispute charges."
+- summary: EXACTLY 1 sentence, maximum 25 words. State what the document is and
+  what it governs. No risk language here — just what the document covers.
+- overall_risk_explanation: EXACTLY 1 sentence, maximum 20 words. State why the
+  document received this risk level.
+- plain_english (per section): Maximum 3 sentences. State what the clause does,
+  who it affects, and what the practical implication is for the user. No padding.
+- risk flag explanation: Maximum 15 words. Be direct. No padding or softening.
+  Example: "Company can change prices at any time without your consent."
+
+IMPORTANT: Do NOT output a plain JSON object. You MUST use the XML tag format:
+<meta>...</meta> then <section>...</section> for each section then <final>...</final>.
+No preamble, no explanation, no markdown code fences. Only XML-tagged JSON blocks."""
 
 
 def _create_async_claude_client(api_key: str):
@@ -64,6 +120,12 @@ async def stream_translation(
     document_text: str,
     document_name: str
 ) -> AsyncGenerator[dict, None]:
+
+    # Check if test mode is enabled
+    if is_test_mode():
+        async for chunk in _mock_stream_response(document_name):
+            yield chunk
+        return
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -100,9 +162,10 @@ Each tag must contain a single complete valid JSON object."""
                     try:
                         meta_data = json.loads(meta_match.group(1).strip())
                         yield {"type": "meta", "data": meta_data}
-                        buffer = buffer[meta_match.end():]
                     except json.JSONDecodeError:
                         pass
+                    finally:
+                        buffer = buffer[meta_match.end():]
 
                 # Extract and yield complete <section> blocks
                 while True:

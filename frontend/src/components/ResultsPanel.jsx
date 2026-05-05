@@ -19,6 +19,8 @@ export default function ResultsPanel({
   streamingComplete,
   documentName,
   originalFilename,
+  forcedOpenSectionIds,
+  setForcedOpenSectionIds,
   onReset,
   onStop,
   onDownloadPdf,
@@ -28,7 +30,8 @@ export default function ResultsPanel({
   const isStreaming = streamingMeta !== undefined
   const currentData = isStreaming ? {
     document_name: streamingMeta?.document_name,
-    parties: streamingMeta?.parties,
+    verdict: streamingMeta?.verdict,
+    parties: Array.isArray(streamingMeta?.parties) ? streamingMeta.parties : [],
     summary: streamingMeta?.summary,
     sections: streamingSections,
     overall_risk_level: streamingFinal?.overall_risk_level,
@@ -133,8 +136,8 @@ export default function ResultsPanel({
           />
         )}
 
-        {currentData && <SummaryCard data={currentData} />}
-        {currentData && <RiskSummary sections={currentData.sections} />}
+        {currentData && <SummaryCard data={currentData} meta={streamingMeta} sections={streamingSections} final={streamingFinal} isStreaming={isStreaming} streamingComplete={streamingComplete} forcedOpenSectionIds={forcedOpenSectionIds} setForcedOpenSectionIds={setForcedOpenSectionIds} />}
+        {currentData && <RiskSummary sections={currentData.sections} isStreaming={isStreaming} streamingComplete={streamingComplete} />}
 
         {/* Sections Header */}
         {currentData?.sections && currentData.sections.length > 0 && (
@@ -159,6 +162,7 @@ export default function ResultsPanel({
               section={section}
               index={i}
               isLast={i === streamingSections.length - 1 && !streamingComplete}
+              forcedOpenSectionIds={forcedOpenSectionIds}
             />
           ))
         ) : (

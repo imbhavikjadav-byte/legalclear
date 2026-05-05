@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from models.request_models import GeneratePdfRequest
@@ -5,6 +6,7 @@ from services.pdf_service import generate_pdf
 from utils.validators import sanitise_filename
 from datetime import datetime, timezone
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -17,6 +19,7 @@ async def generate_pdf_endpoint(request: GeneratePdfRequest):
             original_filename=request.original_filename,
         )
     except Exception as exc:
+        logger.exception("PDF generation failed for document '%s'", request.document_name)
         raise HTTPException(
             status_code=500,
             detail={"error": True, "code": "PDF_ERROR", "message": f"PDF generation failed: {str(exc)}"},
