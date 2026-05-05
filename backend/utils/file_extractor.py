@@ -72,8 +72,15 @@ async def extract_text_from_file(file: UploadFile) -> str:
                 if page_text:
                     text_parts.append(page_text)
             extracted = "\n".join(text_parts).strip()
-            if not extracted:
-                raise ValueError("No text extracted")
+            if len(extracted) < 100:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": True,
+                        "code": "FILE_EXTRACTION_ERROR",
+                        "message": "We couldn't extract text from this PDF. It may be a scanned document where pages are saved as images rather than text. Please try: (1) copying and pasting the text directly into the text box, or (2) using a PDF with a text layer.",
+                    },
+                )
             return extracted
 
         elif ext == "docx":
@@ -81,10 +88,19 @@ async def extract_text_from_file(file: UploadFile) -> str:
             doc = docx.Document(io.BytesIO(raw_bytes))
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             extracted = "\n".join(paragraphs).strip()
-            if not extracted:
-                raise ValueError("No text extracted")
+            if len(extracted) < 100:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": True,
+                        "code": "FILE_EXTRACTION_ERROR",
+                        "message": "We couldn't extract any text from this Word document. The file may be empty or corrupted. Please try copying and pasting the text directly into the text box.",
+                    },
+                )
             return extracted
 
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=400,

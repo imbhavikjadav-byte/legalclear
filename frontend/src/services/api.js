@@ -106,7 +106,13 @@ export async function translateDocumentStream(
   }
 
   if (!response.ok) {
-    onError('Failed to connect to translation service.')
+    try {
+      const body = await response.json()
+      const msg = body?.detail?.message || body?.detail || body?.message || 'Failed to connect to translation service.'
+      onError(msg)
+    } catch (_) {
+      onError('Failed to connect to translation service.')
+    }
     return
   }
 
@@ -174,7 +180,13 @@ export async function translateFileStream(
   }
 
   if (!response.ok) {
-    onError('Failed to connect to translation service.')
+    try {
+      const body = await response.json()
+      const msg = body?.detail?.message || body?.detail || body?.message || 'Failed to connect to translation service.'
+      onError(msg)
+    } catch (_) {
+      onError('Failed to connect to translation service.')
+    }
     return
   }
 
