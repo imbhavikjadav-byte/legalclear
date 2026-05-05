@@ -7,7 +7,7 @@ const RISK_COLOUR = {
   HIGH: { bg: 'bg-[#EF4444]', border: 'border-[#EF4444]', text: 'text-[#EF4444]' },
 }
 
-export default function SummaryCard({ data, meta, sections, final, isStreaming, streamingComplete, forcedOpenSectionIds, setForcedOpenSectionIds }) {
+export default function SummaryCard({ data, meta, sections, final, isStreaming, streamingComplete, forcedOpenSectionIds, setForcedOpenSectionIds, isCached }) {
   // Extract HIGH risks from sections
   const highRisks = sections?.flatMap(section =>
     section.risk_flags?.filter(flag => flag.severity === 'HIGH') || []
@@ -41,7 +41,20 @@ export default function SummaryCard({ data, meta, sections, final, isStreaming, 
       streaming ? 'border-[#F59E0B] shadow-[0_0_0_2px_rgba(245,158,11,0.2)] animate-pulse-border' : 'border-[#334155]'
     }`}>
       {/* Section heading */}
-      <h3 className="text-[#F8FAFC] font-bold text-lg mb-4">At a Glance</h3>
+      <div className="flex items-center gap-3 mb-4">
+        <h3 className="text-[#F8FAFC] font-bold text-lg">At a Glance</h3>
+        {isCached && (
+          <div className="relative group">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#10B981]/12 border border-[#10B981]/30 cursor-default select-none">
+              <span className="text-[#10B981] text-xs font-medium">⚡ Instant result</span>
+            </span>
+            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-10 hidden group-hover:block w-64 px-3 py-2 rounded-lg bg-[#0F1A2E] border border-[#334155] shadow-xl pointer-events-none">
+              <p className="text-[#94A3B8] text-xs leading-relaxed">This document was analysed before. We recognised it and served the cached result instantly.</p>
+              <div className="absolute left-1/2 -translate-x-1/2 -top-1.5 w-2.5 h-2.5 bg-[#0F1A2E] border-l border-t border-[#334155] rotate-45" />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ZONE A — Verdict */}
       <div className="mb-6">

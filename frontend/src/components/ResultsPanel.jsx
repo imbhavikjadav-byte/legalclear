@@ -24,7 +24,8 @@ export default function ResultsPanel({
   onReset,
   onStop,
   onDownloadPdf,
-  onSendEmail
+  onSendEmail,
+  isCached
 }) {
   // Support both legacy and streaming modes
   const isStreaming = streamingMeta !== undefined
@@ -136,7 +137,7 @@ export default function ResultsPanel({
           />
         )}
 
-        {currentData && <SummaryCard data={currentData} meta={streamingMeta} sections={streamingSections} final={streamingFinal} isStreaming={isStreaming} streamingComplete={streamingComplete} forcedOpenSectionIds={forcedOpenSectionIds} setForcedOpenSectionIds={setForcedOpenSectionIds} />}
+        {currentData && <SummaryCard data={currentData} meta={streamingMeta} sections={streamingSections} final={streamingFinal} isStreaming={isStreaming} streamingComplete={streamingComplete} forcedOpenSectionIds={forcedOpenSectionIds} setForcedOpenSectionIds={setForcedOpenSectionIds} isCached={isCached} />}
         {currentData && <RiskSummary sections={currentData.sections} isStreaming={isStreaming} streamingComplete={streamingComplete} />}
 
         {/* Sections Header */}

@@ -82,7 +82,8 @@ export async function translateDocumentStream(
   onSection,
   onFinal,
   onError,
-  signal
+  signal,
+  onCached
 ) {
   let response
   try {
@@ -132,6 +133,7 @@ export async function translateDocumentStream(
           if (parsed.type === 'meta')      onMeta(parsed.data)
           if (parsed.type === 'section')   onSection(parsed.data)
           if (parsed.type === 'final')     onFinal(parsed.data)
+          if (parsed.type === 'cached')    onCached && onCached(parsed.data)
           if (parsed.type === 'error')     onError(parsed.data.message)
         } catch (_) {
           // silently ignore malformed chunks
@@ -150,7 +152,8 @@ export async function translateFileStream(
   onSection,
   onFinal,
   onError,
-  signal
+  signal,
+  onCached
 ) {
   const formData = new FormData()
   formData.append('file', file)
@@ -198,6 +201,7 @@ export async function translateFileStream(
           if (parsed.type === 'meta')      onMeta(parsed.data)
           if (parsed.type === 'section')   onSection(parsed.data)
           if (parsed.type === 'final')     onFinal(parsed.data)
+          if (parsed.type === 'cached')    onCached && onCached(parsed.data)
           if (parsed.type === 'error')     onError(parsed.data.message)
         } catch (_) {
           // silently ignore malformed chunks

@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routers import translate, pdf, email_router
+from services.cache_service import init_cache_db, get_cache_stats
 
 app = FastAPI(title="LegalClear API", version="1.0.0")
 
@@ -44,6 +45,16 @@ app.add_middleware(
 app.include_router(translate.router, prefix="/api")
 app.include_router(pdf.router, prefix="/api")
 app.include_router(email_router.router, prefix="/api")
+
+
+@app.on_event("startup")
+async def startup_event():
+    init_cache_db()
+
+
+@app.get("/api/cache-stats")
+async def cache_stats():
+    return get_cache_stats()
 
 
 @app.get("/api/health")

@@ -23,6 +23,7 @@ export default function App() {
   const [userDocumentName, setUserDocumentName] = useState(null)
   const [forcedOpenSectionIds, setForcedOpenSectionIds] = useState([])
   const [isTestMode, setIsTestMode] = useState(false)
+  const [isCached, setIsCached] = useState(false)
 
   // Assemble complete result for PDF/email when streaming is done
   const assembledResult = useMemo(() => {
@@ -59,6 +60,7 @@ export default function App() {
     setIsStreaming(false)
     setOriginalFilename(null)
     setUserDocumentName(null)
+    setIsCached(false)
   }
 
   async function handleTranslate(text, name) {
@@ -72,6 +74,7 @@ export default function App() {
     setOriginalFilename(null)
     setUserDocumentName(name)
     setIsStreaming(true)
+    setIsCached(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
     await translateDocumentStream(
@@ -93,7 +96,9 @@ export default function App() {
         setIsStreaming(false)
         toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
       },
-      abortControllerRef.current.signal
+      abortControllerRef.current.signal,
+      // onCached
+      (cached) => setIsCached(cached.is_cached)
     )
   }
 
@@ -108,6 +113,7 @@ export default function App() {
     setOriginalFilename(file.name)
     setUserDocumentName(name)
     setIsStreaming(true)
+    setIsCached(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
     await translateFileStream(
@@ -129,7 +135,9 @@ export default function App() {
         setIsStreaming(false)
         toast.error(getErrorMessage(new Error(error)), { duration: 10000 })
       },
-      abortControllerRef.current.signal
+      abortControllerRef.current.signal,
+      // onCached
+      (cached) => setIsCached(cached.is_cached)
     )
   }
 
@@ -225,6 +233,7 @@ export default function App() {
             onStop={handleStop}
             onDownloadPdf={handleDownloadPdf}
             onSendEmail={handleSendEmail}
+            isCached={isCached}
           />
         )}
       </main>
