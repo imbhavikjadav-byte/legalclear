@@ -25,15 +25,23 @@ export function truncateText(text, maxLength = 300) {
   return text.slice(0, maxLength - 3) + '...'
 }
 
+const TECHNICAL_TERM_PATTERN = /chunked|peer|connection|socket|timeout|500|422|stacktrace|incomplete|ECONNRESET|network error|fetch failed/i
+
+const GENERIC_FALLBACK = 'Something went wrong while processing your request. Please try again. If the problem continues, try copying and pasting the document text directly into the text box.'
+
+function sanitizeMessage(msg) {
+  return TECHNICAL_TERM_PATTERN.test(msg) ? GENERIC_FALLBACK : msg
+}
+
 export function getErrorMessage(error) {
   if (error?.response?.data?.detail?.message) {
-    return error.response.data.detail.message
+    return sanitizeMessage(error.response.data.detail.message)
   }
   if (error?.response?.data?.message) {
-    return error.response.data.message
+    return sanitizeMessage(error.response.data.message)
   }
   if (error?.message) {
-    return error.message
+    return sanitizeMessage(error.message)
   }
   return 'An unexpected error occurred. Please try again.'
 }

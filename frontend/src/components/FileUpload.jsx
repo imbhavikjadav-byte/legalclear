@@ -3,20 +3,29 @@ import { Upload, FileText, X } from 'lucide-react'
 
 const ACCEPTED = '.txt,.pdf,.docx'
 
-export default function FileUpload({ onFileSelect, selectedFile, onClear }) {
+export default function FileUpload({ onFileSelect, selectedFile, onClear, onError, disabled = false }) {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
 
   function handleFiles(files) {
     const file = files[0]
     if (!file) return
-    const ext = file.name.split('.').pop().toLowerCase()
-    if (!['txt', 'pdf', 'docx'].includes(ext)) {
-      alert('Only .txt, .pdf, and .docx files are supported.')
+    const allowedExtensions = ['.txt', '.pdf', '.docx']
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase()
+    if (!allowedExtensions.includes(fileExtension)) {
+      onError({
+        type: 'error',
+        title: 'Unsupported file type',
+        message: 'Only .txt, .pdf, and .docx files are supported. Please upload one of these file types.',
+      })
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('File exceeds the 5 MB size limit.')
+      onError({
+        type: 'error',
+        title: 'File too large',
+        message: 'File exceeds the 5 MB size limit.',
+      })
       return
     }
     onFileSelect(file)
@@ -58,12 +67,13 @@ export default function FileUpload({ onFileSelect, selectedFile, onClear }) {
           <p className="text-[#94A3B8] text-sm">
             <span className="text-[#F59E0B] font-medium">Click to upload</span> or drag &amp; drop
           </p>
-          <p className="text-[#94A3B8] text-xs mt-1">.txt, .pdf, .docx — up to 5 MB</p>
+          <p className="text-[#94A3B8] text-xs mt-1">Supported formats: PDF, DOCX, TXT — max 5MB</p>
           <input
             ref={inputRef}
             type="file"
             accept={ACCEPTED}
             className="hidden"
+            disabled={disabled}
             onChange={(e) => handleFiles(e.target.files)}
           />
         </div>

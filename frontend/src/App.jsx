@@ -65,6 +65,9 @@ export default function App() {
   }
 
   async function handleTranslate(text, name) {
+    // Called only when the user submits plain text (no file upload).
+    // File uploads are routed to handleTranslateFile instead.
+    // The priority rule (file > text) is enforced in InputPanel before calling this.
     // Reset all streaming state
     abortControllerRef.current = new AbortController()
     setStreamingMeta(null)
@@ -202,6 +205,7 @@ export default function App() {
                 onTranslateFile={handleTranslateFile}
                 isLoading={isStreaming}
                 isTestMode={isTestMode}
+                showModal={showModal}
               />
             </div>
           </div>

@@ -172,6 +172,17 @@ export default function ResultsPanel({
             <SectionAccordion key={section.section_id} section={section} defaultOpen={i === 0} />
           ))
         )}
+
+        {/* End of report marker */}
+        {(streamingComplete || currentData?.sections?.length > 0) && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col items-center gap-3">
+            <div className="flex items-center gap-4 w-full max-w-sm">
+              <div className="flex-1 h-px bg-[#334155]" />
+              <span className="text-[#64748B] text-xs font-mono uppercase tracking-widest whitespace-nowrap">End of Report</span>
+              <div className="flex-1 h-px bg-[#334155]" />
+            </div>            
+          </div>
+        )}
       </div>
 
       {showEmailModal && (

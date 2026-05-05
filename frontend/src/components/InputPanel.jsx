@@ -6,7 +6,7 @@ import { formatNumber } from '../utils/formatters'
 const MAX_CHARS = 50000
 const MIN_CHARS = 100
 
-export default function InputPanel({ onTranslate, onTranslateFile, isLoading, isTestMode = false }) {
+export default function InputPanel({ onTranslate, onTranslateFile, isLoading, isTestMode = false, showModal }) {
   const [documentText, setDocumentText] = useState('')
   const [documentName, setDocumentName] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -14,6 +14,8 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading, is
 
   const charCount = documentText.length
   const isOverLimit = charCount > MAX_CHARS
+  const hasText = documentText.length > 0
+  const hasFile = !!selectedFile
 
   function validate() {
     const errs = {}
@@ -40,6 +42,9 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading, is
   function handleSubmit(e) {
     e.preventDefault()
     if (!validate()) return
+    // Priority rule: if a file is uploaded, use it for translation (file wins).
+    // If only textarea has text, use that. If somehow both have content (edge case),
+    // file takes priority and textarea content is ignored.
     if (selectedFile) {
       onTranslateFile(selectedFile, documentName.trim())
     } else {
@@ -105,12 +110,23 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading, is
           </label>
           <textarea
             value={documentText}
-            onChange={(e) => { setDocumentText(e.target.value); setErrors((p) => ({ ...p, documentText: '' })) }}
+            onChange={(e) => {
+              const val = e.target.value
+              setDocumentText(val)
+              setErrors((p) => ({ ...p, documentText: '' }))
+              if (val && selectedFile) setSelectedFile(null)
+            }}
             placeholder="Paste your Terms of Service, contract, NDA, lease, or any legal document here…"
-            disabled={!!selectedFile}
+            disabled={hasFile}
+            style={{
+              opacity: hasFile ? 0.4 : 1,
+              transition: 'opacity 0.2s ease',
+              resize: hasFile ? 'none' : undefined,
+              cursor: hasFile ? 'not-allowed' : undefined,
+            }}
             className={`w-full min-h-[300px] bg-[#0F1A2E] border rounded-lg px-4 py-3 text-[#F8FAFC] placeholder-[#475569] focus:outline-none focus:ring-2 focus:ring-[#2563EB] resize-y transition text-sm leading-relaxed ${
               errors.documentText ? 'border-[#EF4444]' : 'border-[#334155]'
-            } ${selectedFile ? 'opacity-50 cursor-not-allowed' : ''}`}
+            }`}
           />
           <div className="flex justify-between mt-1">
             {errors.documentText ? (
@@ -122,6 +138,11 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading, is
               {formatNumber(charCount)} / {formatNumber(MAX_CHARS)} characters
             </span>
           </div>
+          {hasFile && (
+            <p style={{ fontSize: '12px', color: '#64748B', marginTop: '6px', fontStyle: 'italic' }}>
+              Remove the uploaded file to type text instead
+            </p>
+          )}
         </div>
 
         {/* Divider */}
@@ -132,12 +153,27 @@ export default function InputPanel({ onTranslate, onTranslateFile, isLoading, is
         </div>
 
         {/* File Upload */}
-        <div className="mb-6">
+        <div
+          className="mb-6"
+          style={{
+            opacity: hasText ? 0.4 : 1,
+            transition: 'opacity 0.2s ease',
+            cursor: hasText ? 'not-allowed' : undefined,
+            pointerEvents: hasText ? 'none' : undefined,
+          }}
+        >
           <FileUpload
             onFileSelect={(f) => { setSelectedFile(f); setErrors((p) => ({ ...p, documentText: '' })) }}
             selectedFile={selectedFile}
             onClear={() => setSelectedFile(null)}
+            onError={showModal}
+            disabled={hasText}
           />
+          {hasText && (
+            <p style={{ fontSize: '12px', color: '#64748B', marginTop: '6px', fontStyle: 'italic' }}>
+              Clear the text above to upload a file instead
+            </p>
+          )}
         </div>
 
         {/* Submit */}
